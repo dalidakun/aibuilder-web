@@ -3795,6 +3795,7 @@ exports.main = async (event, context) => {
           name: d.name || "匿名读者",
           anchor: d.anchor || null,
           createdAt: d.createdAt || 0,
+          updatedAt: d.updatedAt || 0,
           mine: !!clientId && d.clientId === clientId,
         }));
         return ok({ annotations });
@@ -3844,6 +3845,75 @@ exports.main = async (event, context) => {
         return ok({ id: res.id, createdAt, name });
       }
 
+      case "updateChanAnnotation": {
+        const id = String(event.id || "");
+        const note = String(event.note || "").trim().slice(0, 1000);
+        const name = String(event.name || "").trim().slice(0, 24) || "匿名读者";
+        const clientId = String(event.clientId || "").trim().slice(0, 64);
+        const secret = String(event.clientSecret || "").trim().slice(0, 128);
+        if (!id) return fail("bad_request");
+        if (!note) return fail("empty_note");
+        if (!clientId || !secret) return fail("bad_request");
+        await ensureChanAnnotations();
+        const doc = chanAnnotations.doc(id);
+        const existing = await doc.get();
+        const item = existing.data && existing.data[0];
+        if (!item || !item._id) return fail("not_found");
+        if (
+          item.clientId !== clientId ||
+          item.clientHash !== chanClientHash(clientId, secret)
+        ) {
+          return fail("forbidden");
+        }
+        const updatedAt = now();
+        await doc.update({ note, name, updatedAt });
+        return ok({ id, note, name, updatedAt });
+      }
+
+      // 用户在头像菜单里改了「我的名字」：把本人之前发过的注释 / 提问 / 回复
+      // 的署名一起改掉，别人刷新后看到的也是新名字。身份用 clientId + secret 校验。
+      case "updateChanDisplayName": {
+        const name = String(event.name || "").trim().slice(0, 24);
+        const clientId = String(event.clientId || "").trim().slice(0, 64);
+        const secret = String(event.clientSecret || "").trim().slice(0, 128);
+        if (!name) return fail("bad_request");
+        if (!clientId || !secret) return fail("bad_request");
+        const hash = chanClientHash(clientId, secret);
+        await ensureChanAnnotations();
+        await ensureChanComments();
+        let probe = null;
+        try {
+          const a = await chanAnnotations.where({ clientId }).limit(1).get();
+          probe = (a.data && a.data[0]) || null;
+          if (!probe) {
+            const c = await chanComments.where({ clientId }).limit(1).get();
+            probe = (c.data && c.data[0]) || null;
+          }
+        } catch (e) {
+          // 没有 clientId 索引时只能跳过历史内容改名，不影响新内容的署名
+          console.log("[api] updateChanDisplayName 查询失败，跳过历史改名:", e.message);
+          return ok({ updated: 0, skipped: true });
+        }
+        if (probe && probe.clientHash !== hash) return fail("forbidden");
+        let updated = 0;
+        try {
+          const anns = await chanAnnotations.where({ clientId }).limit(300).get();
+          for (const d of anns.data || []) {
+            await chanAnnotations.doc(d._id).update({ name });
+            updated += 1;
+          }
+          const cms = await chanComments.where({ clientId }).limit(300).get();
+          for (const d of cms.data || []) {
+            await chanComments.doc(d._id).update({ name });
+            updated += 1;
+          }
+        } catch (e) {
+          console.error("[api] updateChanDisplayName 更新失败:", e.message);
+          return ok({ updated, skipped: true });
+        }
+        return ok({ updated });
+      }
+
       case "deleteChanAnnotation": {
         const id = String(event.id || "");
         const clientId = String(event.clientId || "").trim().slice(0, 64);
@@ -3890,20 +3960,43 @@ exports.main = async (event, context) => {
           if (d.parentId && deletedRoots.has(d.rootId || d.parentId)) return false;
           return true;
         });
-        const comments = visible.map((d) => ({
-          id: d._id,
-          parentId: d.parentId || "",
-          rootId: d.rootId || "",
-          content: d.content || "",
-          name: d.name || "匿名读者",
-          clientId: d.clientId || "",
-          replyToName: d.replyToName || "",
-          pinned: !!d.pinned,
-          pinnedAt: d.pinnedAt || 0,
-          deleted: false,
-          createdAt: d.createdAt || 0,
-          mine: !!clientId && d.clientId === clientId,
-        }));
+        // 单次返回的图片字符总预算：图片都压过，但课内提问多了也不能让一次读
+        // 拖回几十 MB。超预算的旧提问只回文字，客户端提示「图片已省略」。
+        const IMAGE_BUDGET = 2 * 1024 * 1024;
+        let imageBudget = IMAGE_BUDGET;
+        const imagePick = new Map();
+        [...visible]
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+          .forEach((d) => {
+            const imgs = Array.isArray(d.images) ? d.images : [];
+            if (!imgs.length) return;
+            const len = imgs.reduce((n, s) => n + String(s || "").length, 0);
+            if (len > imageBudget) {
+              imagePick.set(d._id, { images: [], hidden: true });
+              return;
+            }
+            imageBudget -= len;
+            imagePick.set(d._id, { images: imgs, hidden: false });
+          });
+        const comments = visible.map((d) => {
+          const pick = imagePick.get(d._id);
+          return {
+            id: d._id,
+            parentId: d.parentId || "",
+            rootId: d.rootId || "",
+            content: d.content || "",
+            images: pick ? pick.images : [],
+            imagesHidden: !!(pick && pick.hidden),
+            name: d.name || "匿名读者",
+            clientId: d.clientId || "",
+            replyToName: d.replyToName || "",
+            pinned: !!d.pinned,
+            pinnedAt: d.pinnedAt || 0,
+            deleted: false,
+            createdAt: d.createdAt || 0,
+            mine: !!clientId && d.clientId === clientId,
+          };
+        });
         const total = comments.length;
 
         // 头像按 clientId 批量取，一次返回 profiles 映射，避免每条评论重复头像
@@ -3942,8 +4035,25 @@ exports.main = async (event, context) => {
         const name = String(event.name || "").trim().slice(0, 24) || "匿名读者";
         const clientId = String(event.clientId || "").trim().slice(0, 64);
         const secret = String(event.clientSecret || "").trim().slice(0, 128);
-        if (!content) return fail("empty_comment");
         if (!clientId || !secret) return fail("bad_request");
+        // 提问和回复都可以附图；浏览器已经压过，这里做格式 / 张数 / 体积兜底。
+        // 图片体积上限要和前端（长边 1600px、约 22 万字符/张）对齐，留一点余量。
+        const parentIdRaw = String(event.parentId || "");
+        const images = [];
+        const raw = Array.isArray(event.images) ? event.images : [];
+        if (raw.length > 3) return fail("too_many_images");
+        let total = 0;
+        for (const it of raw) {
+          const s = String(it || "");
+          if (!/^data:image\/(jpeg|png|webp);base64,/i.test(s)) {
+            return fail("bad_image");
+          }
+          if (s.length > 240000) return fail("image_too_large");
+          total += s.length;
+          if (total > 700000) return fail("image_too_large");
+          images.push(s);
+        }
+        if (!content && !images.length) return fail("empty_comment");
         await ensureChanComments();
         // 频控：同一浏览器 10 分钟最多 30 条
         try {
@@ -3953,7 +4063,7 @@ exports.main = async (event, context) => {
           if (recent && recent.total >= 30) return fail("rate_limited");
         } catch (e) {}
 
-        let parentId = String(event.parentId || "");
+        let parentId = parentIdRaw;
         let rootId = "";
         let replyToName = "";
         if (parentId) {
@@ -3974,6 +4084,7 @@ exports.main = async (event, context) => {
           rootId,
           replyToName,
           content,
+          images,
           name,
           clientId,
           clientHash: chanClientHash(clientId, secret),
@@ -4024,6 +4135,7 @@ exports.main = async (event, context) => {
         await doc.update({
           deleted: true,
           content: "",
+          images: [],
           pinned: false,
           pinnedAt: 0,
           deletedAt: now(),

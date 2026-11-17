@@ -182,38 +182,121 @@
   }
   applyFont(parseInt(load(FS_KEY) || "17", 10));
 
-  /* ---------------- 手机上的目录抽屉 ---------------- */
+  /* ---------------- 目录：桌面折叠 / 手机抽屉 ----------------
+     桌面：左栏标题栏的按钮把目录整列收起，正文区随之变宽，状态记在 localStorage；
+           收起后阅读区左上角浮出「目录」按钮，点它重新展开。
+     手机：目录本来是抽屉，标题栏按钮和「目录」按钮都负责开关抽屉。 */
+
+  var layout = document.querySelector(".chan-layout");
+  var sideToggle = document.getElementById("chanSideToggle");
+  var SIDE_KEY = "chan:side";
+  var desktopMq = window.matchMedia("(min-width: 961px)");
+
+  function isDesktop() {
+    return desktopMq.matches;
+  }
+
+  function sideCollapsed() {
+    return !!(layout && layout.classList.contains("is-side-collapsed"));
+  }
+
+  function drawerOpen() {
+    return !!(sideEl && sideEl.classList.contains("is-open"));
+  }
+
+  // 两个按钮的 aria 状态、图标朝向、文案跟着同一份状态走
+  function syncSideUi() {
+    var desktop = isDesktop();
+    var open = desktop ? !sideCollapsed() : drawerOpen();
+    if (sideToggle) {
+      var label = desktop ? (open ? "收起目录" : "展开目录") : "关闭目录";
+      sideToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      sideToggle.setAttribute("aria-label", label);
+      sideToggle.title = label;
+    }
+    if (tocBtn) {
+      tocBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      tocBtn.setAttribute("aria-label", open ? "收起目录" : "展开目录");
+      tocBtn.title = open ? "收起目录" : "展开目录";
+    }
+  }
 
   function openDrawer() {
     if (!sideEl) return;
     sideEl.classList.add("is-open");
     if (tocScrim) tocScrim.hidden = false;
-    if (tocBtn) tocBtn.setAttribute("aria-expanded", "true");
+    syncSideUi();
   }
 
   function closeDrawer() {
     if (!sideEl) return;
     sideEl.classList.remove("is-open");
     if (tocScrim) tocScrim.hidden = true;
-    if (tocBtn) tocBtn.setAttribute("aria-expanded", "false");
+    syncSideUi();
   }
 
-  if (tocBtn) {
-    tocBtn.addEventListener("click", function () {
-      if (sideEl.classList.contains("is-open")) closeDrawer();
-      else openDrawer();
-    });
+  function expandSide() {
+    if (!layout) return;
+    layout.classList.remove("is-side-collapsed");
+    store(SIDE_KEY, "1");
+    syncSideUi();
+    // 收起 / 展开后焦点别丢到 body 上，键盘用户能接着操作
+    if (sideToggle) sideToggle.focus();
   }
+
+  function collapseSide() {
+    if (!layout) return;
+    layout.classList.add("is-side-collapsed");
+    store(SIDE_KEY, "0");
+    syncSideUi();
+    if (tocBtn) tocBtn.focus();
+  }
+
+  function toggleSide() {
+    if (isDesktop()) {
+      if (sideCollapsed()) expandSide();
+      else collapseSide();
+      return;
+    }
+    if (drawerOpen()) closeDrawer();
+    else openDrawer();
+  }
+
+  if (sideToggle) sideToggle.addEventListener("click", toggleSide);
+  if (tocBtn) tocBtn.addEventListener("click", toggleSide);
   if (tocScrim) tocScrim.addEventListener("click", closeDrawer);
   if (sideEl) {
     sideEl.addEventListener("click", function (e) {
       var link = e.target.closest ? e.target.closest('a[href^="#l"]') : null;
-      if (link) closeDrawer();
+      // 手机上点完目录顺手收起抽屉；桌面折叠态点不到这里
+      if (link && !isDesktop()) closeDrawer();
     });
   }
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeDrawer();
+    if (e.key === "Escape" && drawerOpen()) closeDrawer();
   });
+
+  // 跨断点时把另一套状态清干净：进桌面丢掉抽屉，进手机丢掉折叠
+  function onBreakpoint() {
+    if (!layout) return;
+    if (isDesktop()) {
+      if (sideEl) sideEl.classList.remove("is-open");
+      if (tocScrim) tocScrim.hidden = true;
+      if (load(SIDE_KEY) === "0") layout.classList.add("is-side-collapsed");
+      else layout.classList.remove("is-side-collapsed");
+    } else {
+      layout.classList.remove("is-side-collapsed");
+    }
+    syncSideUi();
+  }
+  if (desktopMq.addEventListener) desktopMq.addEventListener("change", onBreakpoint);
+  else if (desktopMq.addListener) desktopMq.addListener(onBreakpoint);
+
+  // 桌面按上次的选择还原目录；手机上目录一律先是收起的抽屉
+  if (layout && isDesktop() && load(SIDE_KEY) === "0") {
+    layout.classList.add("is-side-collapsed");
+  }
+  syncSideUi();
 
   /* ---------------- 检索（只搜标题） ---------------- */
 
@@ -304,6 +387,40 @@
       go(Math.min(current + 1, TOTAL), { scroll: true });
     });
   }
+
+  /* ---------------- 右下角 DeepSeek ---------------- */
+
+  (function () {
+    var fab = document.getElementById("chanAiFab");
+    if (!fab) return;
+    var DEEPSEEK_URL = "https://chat.deepseek.com/";
+
+    // 点一次直接打开官方网页版：独立 440×720 窗口，不是新标签，阅读页不跳走。
+    fab.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var w = 440;
+      var h = 720;
+      var left = Math.max(0, (window.screenX || 0) + window.innerWidth - w - 40);
+      var top = Math.max(0, (window.screenY || 0) + 80);
+      var win = null;
+      try {
+        win = window.open(
+          DEEPSEEK_URL,
+          "deepseek_web_chat",
+          "popup=yes,width=" + w + ",height=" + h + ",left=" + left + ",top=" + top
+        );
+      } catch (err) {}
+      try {
+        if (win) win.opener = null;
+      } catch (err2) {}
+      if (!win) {
+        // 浏览器拦截弹窗时退到当前标签，不新开标签
+        try {
+          window.location.href = DEEPSEEK_URL;
+        } catch (err3) {}
+      }
+    });
+  })();
 
   /* ---------------- 启动 ---------------- */
 

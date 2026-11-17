@@ -5317,6 +5317,86 @@
   var RESET_MAX = 100000000;
   var RESET_DEFAULT = 100000;
 
+  /* ---------------- 我的名字：注释 / 提问 / 回复的署名 ---------------- */
+
+  var DISPLAY_NAME_KEY = 'chan:anno:name';
+
+  function currentDisplayName() {
+    try {
+      var saved = String(localStorage.getItem(DISPLAY_NAME_KEY) || '').trim();
+      if (saved) return saved.replace(/^@+/, '');
+      return String(readLS(LS.user) || '').trim().replace(/^@+/, '');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function openNameModal() {
+    var m = $('nameModal');
+    if (!m) return;
+    var input = $('displayNameInput');
+    if (input) input.value = currentDisplayName();
+    if ($('nameErr')) $('nameErr').textContent = '';
+    m.hidden = false;
+    setTimeout(function () {
+      if (!input) return;
+      input.focus();
+      if (input.select) input.select();
+    }, 30);
+  }
+
+  function closeNameModal() {
+    var m = $('nameModal');
+    if (m) m.hidden = true;
+  }
+
+  function saveDisplayName() {
+    var input = $('displayNameInput');
+    var name = String((input && input.value) || '')
+      .replace(/^@+/, '')
+      .trim()
+      .slice(0, 20);
+    if (!name) {
+      if ($('nameErr')) $('nameErr').textContent = '请输入名字';
+      if (input) input.focus();
+      return;
+    }
+    try {
+      localStorage.setItem(DISPLAY_NAME_KEY, name);
+    } catch (e) {}
+    closeNameModal();
+    toast('名字已保存');
+    var cid = readLS('chan:anno:id');
+    var csecret = readLS('chan:anno:secret');
+    if (!cid || !csecret) return;
+    api('updateChanDisplayName', {
+      clientId: cid,
+      clientSecret: csecret,
+      name: name
+    }).then(function (j) {
+      // 清掉注释缓存并让读书会 iframe 重新拉一次，旧注释也换成新名字
+      try {
+        var keys = [];
+        for (var i = 0; i < localStorage.length; i += 1) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf('chan:anno:cache:') === 0) keys.push(k);
+        }
+        for (var n = 0; n < keys.length; n += 1) localStorage.removeItem(keys[n]);
+      } catch (e) {}
+      var frame = $('chanFrame');
+      if (frame && frame.getAttribute('src')) {
+        try {
+          var h = frame.contentWindow.location.hash || '';
+          var base = frame.src.split('#')[0].split('?')[0];
+          frame.src = base + '?embed=1&nc=' + Date.now() + h;
+        } catch (e2) {}
+      }
+      if (j && j.skipped) toast('名字已保存；旧内容下次刷新会更新');
+    }).catch(function () {
+      toast('名字已保存（旧内容改名失败，新内容会用新名字）');
+    });
+  }
+
   function openReset() {
     var m = $('resetModal');
     if (!m) return;
@@ -5627,31 +5707,9 @@
       });
     }
 
-    // 历史记录：一开一平合成一条；全部渲染，行多了在侧滑面板里滚
+    // 历史记录：一开一平合成一条，画到走势图上（复盘页左栏也读同一份记录）
     var trips = roundTrips();
     Draw.trades = trips;
-    var hisBody = $('tblHis');
-    if (hisBody) {
-      hisBody.innerHTML = '';
-      for (var ti = 0; ti < trips.length; ti += 1) {
-        var t = trips[ti];
-        var sideText = (t.side === 'long' ? '看多' : '看空') + (t.liquidated ? ' · 强平' : '');
-        var tr = row([
-          cell(fmtDateTime(t.at), ''),
-          cell(sideText, t.side === 'long' ? 'is-up' : 'is-down'),
-          cell((t.pnl >= 0 ? '+' : '') + group(t.pnl, 2), 'num ' + (t.pnl >= 0 ? 'is-up' : 'is-down')),
-          cell(t.entry == null ? '—' : fmtPrice(t.entry), 'num'),
-          cell(fmtPrice(t.exit), 'num'),
-          cell(fmtQty(t.qty), 'num')
-        ]);
-        tr.className = 'his-row';
-        tr.onclick = (function (trip) {
-          return function () { flashTrade(trip); };
-        })(t);
-        hisBody.appendChild(tr);
-      }
-    }
-    if ($('hisEmpty')) $('hisEmpty').hidden = trips.length > 0;
 
     if (Draw.showTrades) drawSchedule();
   }
@@ -6712,57 +6770,14 @@
       renderEst();
     });
 
-    // 走势图右下角的「历史」悬浮按钮 → 贴着走势图右边界往左滑出历史记录
-    var hisFab = $('btnHisSlide');
-    var hisSlide = $('hisSlide');
-
-    /** 面板右边界对齐走势图右边界（右侧面板被收起时就贴到页面右边）。 */
-    function placeHisSlide() {
-      if (!hisSlide) return;
-      var chart = $('chartWrap');
-      var right = 0;
-      if (chart && chart.getBoundingClientRect) {
-        right = (window.innerWidth || 0) - chart.getBoundingClientRect().right;
-      }
-      if (!(right > 0)) right = 0;
-      hisSlide.style.right = Math.max(0, Math.round(right)) + 'px';
-    }
-
-    function openHisSlide() {
-      if (!hisSlide) return;
-      placeHisSlide();
-      renderTables();
-      hisSlide.classList.add('is-open');
-      hisSlide.setAttribute('aria-hidden', 'false');
-      if (hisFab) {
-        hisFab.classList.add('is-on');
-        hisFab.setAttribute('aria-expanded', 'true');
-      }
-    }
-    function closeHisSlide() {
-      if (!hisSlide) return;
-      hisSlide.classList.remove('is-open');
-      hisSlide.setAttribute('aria-hidden', 'true');
-      if (hisFab) {
-        hisFab.classList.remove('is-on');
-        hisFab.setAttribute('aria-expanded', 'false');
-      }
-    }
-    if (hisFab) {
-      hisFab.addEventListener('click', function () {
-        if (hisSlide && hisSlide.classList.contains('is-open')) closeHisSlide();
-        else openHisSlide();
+    // 右下角「交易复盘」按钮：点一下整屏展开，再点一下收起
+    var reviewFab = $('btnReview');
+    if (reviewFab) {
+      reviewFab.addEventListener('click', function () {
+        if (Review.open) closeReview();
+        else openReview(true);
       });
     }
-    var hisClose = $('hisSlideClose');
-    if (hisClose) hisClose.addEventListener('click', closeHisSlide);
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') closeHisSlide();
-    });
-    placeHisSlide(); // 没展开也先钉在走势图右边界，折叠动画不会越界
-    window.addEventListener('resize', function () {
-      placeHisSlide();
-    });
 
     // 右侧面板折叠 / 展开（周期栏最右边的 TRADE）
     var tradeTab = $('tradeTab');
@@ -6830,6 +6845,7 @@
           }
         }
         else if (act === 'login') openModal();
+        else if (act === 'name') openNameModal();
         else if (act === 'phone') openPhone('bind');
         else if (act === 'sync') syncAccount();
         else if (act === 'reset') openReset();
@@ -6863,8 +6879,7 @@
         if (
           t.closest('#maPop') || t.closest('#ctxMenu') || t.closest('#lineMenu') ||
           t.closest('#acctMenu') || t.closest('#btnMenu') || t.closest('#maTools') ||
-          t.closest('#dirSeg') || t.closest('#btnOpen') || t.closest('#btnCloseAll') ||
-          t.closest('#btnHisSlide') || t.closest('#hisSlide')
+          t.closest('#dirSeg') || t.closest('#btnOpen') || t.closest('#btnCloseAll')
         ) return;
       }
       closeMenus();
@@ -6927,6 +6942,25 @@
     if (resetModal) resetModal.addEventListener('click', function (e) {
       if (e.target === resetModal) closeReset();
     });
+
+    // 我的名字：保存到本地，并同步改掉以前的注释 / 提问署名
+    var nameCancel = $('nameCancel');
+    if (nameCancel) nameCancel.onclick = closeNameModal;
+    var nameSave = $('nameSave');
+    if (nameSave) nameSave.onclick = saveDisplayName;
+    var nameModal = $('nameModal');
+    if (nameModal) nameModal.addEventListener('click', function (e) {
+      if (e.target === nameModal) closeNameModal();
+    });
+    var displayNameInput = $('displayNameInput');
+    if (displayNameInput) {
+      displayNameInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveDisplayName();
+        }
+      });
+    }
     var resetQuick = $('resetQuick');
     if (resetQuick) resetQuick.addEventListener('click', function (e) {
       var b = e.target && e.target.closest ? e.target.closest('button[data-amount]') : null;
@@ -6945,6 +6979,7 @@
         closePhone();
         closeReset();
         closeMenus();
+        closeReview();
       }
       if (e.key === 'Enter' && document.activeElement && /aUser|aPass|aPhone|aCode/.test(document.activeElement.id)) submitAuth();
       if (e.key === 'Enter' && document.activeElement && /pPhone|pCode|pNewPwd/.test(document.activeElement.id)) submitPhone();
@@ -6993,14 +7028,104 @@
   // 顶部导航固定不动，行情 / 燃灯是并排的两整页，切换时整条轨道左右推拉。
   // iframe 里的页面会自己识别「被嵌入」并隐藏重复导航；站内首页链接则关掉
   // 燃灯页，避免在 iframe 里再套一层行情页。
-  // 顶部四个菜单 = 一条横向轨道：交易练习 / 交易复盘 / 缠论读书会 / 大正藏经
+  // 顶部菜单 = 一条横向轨道：交易练习 / 缠论读书会 / 大正藏经
+  //（交易复盘不再是轨道页，改成交易练习右下角按钮展开的整屏浮层，见 Review）
   var PANES = [
     { key: 'trade', pane: 'tradePane', hash: '' },
-    { key: 'review', pane: 'reviewPane', frame: 'reviewFrame', url: 'review/index.html?embed=1', hash: '#review' },
     { key: 'chan', pane: 'chanPane', frame: 'chanFrame', url: 'chan/index.html?embed=1', hash: '#chan' },
+    { key: 'stocks', pane: 'stocksPane', frame: 'stocksFrame', url: 'stocks/index.html?embed=1', hash: '#stocks' },
     { key: 'app', pane: 'appPane', frame: 'appFrame', url: 'app/index.html', hash: '#app' }
   ];
   var PaneView = { index: 0, loaded: {} };
+
+  /** 取首页 site.css 的构建版本，给乘法自选 iframe 加 v=，避免菜单切换时命中旧页面缓存。 */
+  function assetVer() {
+    var link = document.querySelector('link[href*="site.css"]');
+    var m = link && (link.getAttribute('href') || '').match(/[?&]v=([^&]+)/);
+    return m ? m[1] : '';
+  }
+
+  // ------------------------------------------------- 交易复盘（右下角按钮展开）
+  //
+  // 它不是轨道页了：点右下角按钮 → 浮层从屏幕最右侧边缘往左揭开，一直铺到左边缘，
+  // 顶栏和走势一起盖住；再点同一个按钮收起。iframe 第一次展开时才加载。
+  var Review = { open: false, loaded: false };
+
+  function reviewFrame() {
+    return $('reviewFrame');
+  }
+
+  /** 第一次展开才拉复盘页，之后复用；iframe 里的导航由 hideEmbedChrome 抹掉。 */
+  function loadReviewFrame() {
+    var frame = reviewFrame();
+    if (!frame || Review.loaded) return;
+    Review.loaded = true;
+    frame.addEventListener('load', function () { hideEmbedChrome(frame); });
+    frame.setAttribute('src', (cfg.rel || '') + 'review/index.html?embed=1');
+  }
+
+  /** 给复盘页发个消息：刚平完仓再打开，左栏记录是新的，不用手动点刷新。 */
+  function tellReview(type) {
+    var frame = reviewFrame();
+    if (!frame || !Review.loaded) return;
+    try {
+      var win = frame.contentWindow;
+      if (win) win.postMessage({ type: type }, location.origin);
+    } catch (e) {
+      /* 跨域或没加载好就算了，复盘页自己也有刷新按钮 */
+    }
+  }
+
+  function openReview(pushHash) {
+    var overlay = $('reviewOverlay');
+    if (!overlay) return;
+    loadReviewFrame();
+    overlay.classList.add('is-open');
+    overlay.removeAttribute('inert');
+    overlay.setAttribute('aria-hidden', 'false');
+    // 浮层盖住的顶栏 / 行情整页先禁掉焦点，Tab 不会跑到看不见的地方
+    var nav = document.querySelector('.topnav');
+    if (nav) nav.setAttribute('inert', '');
+    var viewport = $('pageViewport');
+    if (viewport) viewport.setAttribute('inert', '');
+    var btn = $('btnReview');
+    if (btn) {
+      btn.classList.add('is-on');
+      btn.setAttribute('aria-expanded', 'true');
+      btn.setAttribute('aria-label', '收起交易复盘');
+      btn.title = '收起交易复盘';
+    }
+    Review.open = true;
+    closeMenus();
+    tellReview('review:refresh');
+    if (pushHash) {
+      try { history.replaceState({ pane: 'review' }, '', '#review'); } catch (e) {}
+    }
+  }
+
+  function closeReview() {
+    var overlay = $('reviewOverlay');
+    if (!overlay || !Review.open) return;
+    Review.open = false;
+    tellReview('review:save');
+    overlay.classList.remove('is-open');
+    overlay.setAttribute('inert', '');
+    overlay.setAttribute('aria-hidden', 'true');
+    var nav = document.querySelector('.topnav');
+    if (nav) nav.removeAttribute('inert');
+    var viewport = $('pageViewport');
+    if (viewport) viewport.removeAttribute('inert');
+    var btn = $('btnReview');
+    if (btn) {
+      btn.classList.remove('is-on');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.setAttribute('aria-label', '展开交易复盘');
+      btn.title = '展开交易复盘';
+    }
+    if ((location.hash || '') === '#review') {
+      try { history.replaceState({ pane: 'trade' }, '', location.pathname + location.search); } catch (e) {}
+    }
+  }
 
   function paneIndex(key) {
     for (var i = 0; i < PANES.length; i++) {
@@ -7012,8 +7137,8 @@
   function paneFromHash() {
     var h = '';
     try { h = location.hash || ''; } catch (e) { h = ''; }
-    if (h === '#review') return 1;
-    if (h === '#chan') return 2;
+    if (h === '#chan') return 1;
+    if (h === '#stocks') return 2;
     if (h === '#app') return 3;
     return 0;
   }
@@ -7042,9 +7167,13 @@
       if (loading) loading.hidden = false;
       frame.addEventListener('load', cleanAppFrame);
     }
-    if (item.key === 'chan') frame.addEventListener('load', cleanEmbedChrome);
-    if (item.key === 'review') frame.addEventListener('load', cleanEmbedChrome);
-    frame.src = (cfg.rel || '') + item.url;
+    if (item.key === 'chan') frame.addEventListener('load', function () { hideEmbedChrome(frame); });
+    var url = item.url;
+    if (item.key === 'stocks') {
+      var ver = assetVer();
+      if (ver) url += (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + encodeURIComponent(ver);
+    }
+    frame.src = (cfg.rel || '') + url;
   }
 
   function setPane(index, push) {
@@ -7054,6 +7183,10 @@
 
     var track = $('pageTrack');
     if (track) track.setAttribute('data-pane', item.key);
+    // 右下角的复盘按钮只在交易练习这一轨露出来
+    if (document.body) document.body.setAttribute('data-pane', item.key);
+    // 复盘浮层只属于交易练习；切到别的轨道（带 #chan / #app 的地址进来）时先收起
+    if (item.key !== 'trade') closeReview();
 
     PANES.forEach(function (p, i) {
       var el = $(p.pane);
@@ -7079,37 +7212,33 @@
   }
 
   // iframe 里的页面自己会标 is-embedded；这里再兜一层，防止旧缓存页面还带着顶栏
-  function cleanEmbedChrome() {
-    var ids = ['chanFrame', 'reviewFrame'];
-    ids.forEach(function (id) {
-      var frame = $(id);
-      if (!frame) return;
-      try {
-        var doc = frame.contentDocument;
-        if (!doc || doc.getElementById('embed-hide-nav')) return;
-        var st = doc.createElement('style');
-        st.id = 'embed-hide-nav';
-        st.textContent = '.topnav,.skip-link{display:none!important}';
-        (doc.head || doc.documentElement).appendChild(st);
-        if (doc.documentElement) doc.documentElement.classList.add('is-embedded');
-        // 笔记页里「去登录」这种链到 index.html 的入口，交给顶层跳转，
-        // 别在 iframe 里再套一层行情页
-        doc.addEventListener('click', function (ev) {
-          var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
-          if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
-          var url;
-          try { url = new URL(a.href, doc.baseURI); } catch (e) { return; }
-          if (url.origin !== location.origin) return;
-          var path = url.pathname.replace(/\/+$/, '') || '/';
-          if (path === '/' || path === '/index.html' || path === location.pathname) {
-            ev.preventDefault();
-            location.href = url.href;
-          }
-        });
-      } catch (e) {
-        /* 跨域就不管 */
-      }
-    });
+  function hideEmbedChrome(frame) {
+    if (!frame) return;
+    try {
+      var doc = frame.contentDocument;
+      if (!doc || doc.getElementById('embed-hide-nav')) return;
+      var st = doc.createElement('style');
+      st.id = 'embed-hide-nav';
+      st.textContent = '.topnav,.skip-link{display:none!important}';
+      (doc.head || doc.documentElement).appendChild(st);
+      if (doc.documentElement) doc.documentElement.classList.add('is-embedded');
+      // 笔记页里「去登录」这种链到 index.html 的入口，交给顶层跳转，
+      // 别在 iframe 里再套一层行情页
+      doc.addEventListener('click', function (ev) {
+        var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+        if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+        var url;
+        try { url = new URL(a.href, doc.baseURI); } catch (e) { return; }
+        if (url.origin !== location.origin) return;
+        var path = url.pathname.replace(/\/+$/, '') || '/';
+        if (path === '/' || path === '/index.html' || path === location.pathname) {
+          ev.preventDefault();
+          location.href = url.href;
+        }
+      });
+    } catch (e) {
+      /* 跨域就不管 */
+    }
   }
 
   function cleanAppFrame() {
@@ -7161,8 +7290,16 @@
     }
     window.addEventListener('popstate', function () {
       setPane(paneFromHash(), false);
+      if ((location.hash || '') === '#review') openReview(false);
+    });
+    // 复盘页里按 Esc（焦点在 iframe 里，按键出不来）由它发消息过来收起浮层
+    window.addEventListener('message', function (e) {
+      if (!e || e.origin !== location.origin || !e.data) return;
+      if (e.data.type === 'review:close') closeReview();
     });
     setPane(paneFromHash(), false);
+    // 旧链接 / 书签里的 #review 也照旧能直接把复盘铺开
+    if ((location.hash || '') === '#review') openReview(false);
   }
 
   /** 下单区：看多 / 看空 直接开仓，这里只负责底部提示和「平仓」按钮的可用状态。 */

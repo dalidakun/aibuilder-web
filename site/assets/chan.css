@@ -24,6 +24,58 @@ body.chan-page {
   padding: 2px 6px 10px;
 }
 
+/* 标题栏：目录名 + 课数 + 折叠按钮（桌面收起整列，手机收起抽屉） */
+.chan-side__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px 4px;
+}
+
+.chan-side__title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-sec);
+}
+
+.chan-side__total {
+  font-size: 11px;
+  color: var(--text-hint);
+  font-variant-numeric: tabular-nums;
+}
+
+.chan-side__toggle {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-hint);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chan-side__toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.chan-side__toggle:hover {
+  background: var(--tint-bg);
+  color: var(--accent-deep);
+}
+
+.chan-side__toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* 课程搜索：不用线条边框，用一块浅色填充的输入区 */
 .chan-search {
   display: flex;
@@ -198,6 +250,7 @@ body.chan-page {
 /* ------------------------------ 正文列 ------------------------------ */
 
 .chan-layout {
+  --chan-read: 900px;
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
@@ -207,23 +260,41 @@ body.chan-page {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 32px;
+  transition: grid-template-columns 0.26s ease, gap 0.26s ease;
+}
+
+/* 收起目录：左列宽度归零，正文列拿到整条空间（手机上走抽屉，不用这套） */
+.chan-layout.is-side-collapsed {
+  --chan-read: 1000px;
+  grid-template-columns: 0 minmax(0, 1fr);
+  gap: 0;
+}
+
+.chan-layout.is-side-collapsed .chan-side {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* 课程目录（左边一列，不跟着正文滚） */
 .chan-side {
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding-bottom: 8px;
+  transition: opacity 0.16s ease;
 }
 
 .chan-side.is-open {
   /* 手机上用抽屉，桌面永远展开 */
 }
 
+/* 正文列：占满整条，工具条和正文在里面居中；目录收起时正文可以再放宽一点 */
 .chan-main {
   position: relative;
+  width: 100%;
   height: 100%;
   min-height: 0;
   display: flex;
@@ -232,23 +303,53 @@ body.chan-page {
 
 .chan-bar {
   flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  /* 和正文同宽：多出的 12px 是滚动区的左右内边距，这样两边的文字能对齐 */
+  max-width: calc(var(--chan-read) + 12px);
+  margin-inline: auto;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 0 8px;
+  padding: 0 10px 8px 2px;
+  transition: max-width 0.26s ease;
 }
 
+/* 目录开关：桌面只在目录收起时出现（重新展开），手机上一直有（唤出抽屉） */
 .chan-bar__btn {
   display: none;
-  padding: 5px 10px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
   border: 0;
   border-radius: var(--radius);
   background: var(--tint-bg);
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: var(--text);
+  line-height: 1;
+  color: var(--text-sec);
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chan-bar__btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.chan-bar__btn:hover {
+  background: #e7dcc2;
+  color: var(--text);
+}
+
+.chan-bar__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.chan-layout.is-side-collapsed .chan-bar__btn {
+  display: inline-flex;
 }
 
 .chan-bar__count {
@@ -256,6 +357,19 @@ body.chan-page {
   color: var(--text-hint);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+}
+
+/* 怎么加注释的轻提示：跟在课次后面，窄屏藏掉 */
+.chan-bar__hint {
+  font-size: 11.5px;
+  color: var(--text-hint);
+  letter-spacing: 0.02em;
+}
+
+.chan-bar__hint::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--muted);
 }
 
 .chan-bar__group {
@@ -293,6 +407,55 @@ body.chan-page {
   cursor: default;
 }
 
+/* 阅读页右下角：DeepSeek 鲸鱼图标（无圆圈、无底板）。
+   点一次直接打开官方网页版；官方页禁止 iframe 内嵌，所以不在页面里画聊天层。 */
+.chan-ai-dock {
+  position: fixed;
+  right: 22px;
+  bottom: 18px;
+  z-index: 41;
+  display: flex;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.chan-ai-dock > * {
+  pointer-events: auto;
+}
+
+.chan-ai-fab {
+  width: 40px;
+  height: auto;
+  padding: 3px;
+  display: block;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.chan-ai-fab:hover {
+  opacity: 0.8;
+}
+
+.chan-ai-fab:active {
+  opacity: 0.65;
+}
+
+.chan-ai-fab:focus-visible {
+  outline: 2px solid #c9a063;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.chan-ai-fab img {
+  display: block;
+  width: 34px;
+  height: auto;
+}
+
 /* 正文滚动区：右侧细滚动条，和目录同款 */
 .chan-scroll {
   flex: 1 1 auto;
@@ -319,8 +482,10 @@ body.chan-page {
 }
 
 .chan-reader {
-  max-width: 900px;
+  max-width: var(--chan-read);
+  margin-inline: auto;
   font-size: var(--chan-fs);
+  transition: max-width 0.26s ease;
 }
 
 .chan-lesson {
@@ -483,60 +648,157 @@ body.chan-page {
   max-width: none;
 }
 
-/* ======================== 跨用户注释（每课一份） ========================
-   右下角悬浮按钮 → 面板里按条列出本课所有读者的注释：
-   每条上面是选中的原文，下面是注释内容。选中正文文字会浮出「注释」按钮。
+/* ==================== 段落注释（每课一份，按段落聚合） ====================
+   有过注释的段落，末尾浮出「注 N」小按钮；点它右侧浮出这一段所有读者的注释，
+   再点一次（或点别处 / Esc）收起。选中正文文字会浮出「注释」按钮。
    ====================================================================== */
 
-.chan-anno-dock {
-  position: fixed;
-  right: 22px;
-  bottom: 18px;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
-  pointer-events: none;
+/* 段落末尾的注释入口：按钮本身没有文本节点，计数用 ::after 画，
+   这样正文的「文本流偏移」（注释锚点）不会因为按钮而改变。 */
+.chan-para-anno {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  margin-left: 0.4em;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(48, 92, 56, 0.1);
+  color: var(--accent-deep);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: 0.1em;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.chan-anno-dock > * {
-  pointer-events: auto;
+.chan-para-anno::before {
+  content: "注";
+  font-size: 10.5px;
+  opacity: 0.7;
 }
 
-/* 面板 */
-
-.chan-anno-panel {
-  display: flex;
-  flex-direction: column;
-  width: min(392px, calc(100vw - 40px));
-  max-height: min(58vh, 520px);
-  overflow: hidden;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 20px 48px rgba(36, 31, 22, 0.22);
+.chan-para-anno::after {
+  content: attr(data-count);
+  font-variant-numeric: tabular-nums;
 }
 
-.chan-anno-panel[hidden] {
-  display: none;
+.chan-para-anno:hover,
+.chan-para-anno:focus-visible {
+  background: rgba(48, 92, 56, 0.18);
+  color: var(--accent-deep);
+  outline: none;
 }
 
-.chan-anno-panel__head {
+.chan-para-anno:focus-visible {
+  box-shadow: 0 0 0 2px rgba(48, 92, 56, 0.35);
+}
+
+/* 当前展开的那一段：按钮变实心 */
+.chan-para-anno.is-on {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(48, 92, 56, 0.28);
+}
+
+.chan-para-anno.is-on::before {
+  opacity: 0.85;
+}
+
+/* 别人的注释没有画线，点「定位」时入口闪一下 */
+.chan-para-anno.is-flash {
+  animation: chan-para-flash 1.3s ease;
+}
+
+@keyframes chan-para-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(48, 92, 56, 0);
+  }
+  35% {
+    box-shadow: 0 0 0 5px rgba(48, 92, 56, 0.3);
+  }
+}
+
+/* 标题上的注释入口：跟着标题字号走，稍微抬一点 */
+.chan-lesson__title .chan-para-anno {
+  margin-left: 0.5em;
+  vertical-align: 0.22em;
+}
+
+/* 原文改动后定位不到的旧注释，统一挂在正文末尾 */
+.chan-prose .chan-orphan {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 8px 9px 14px;
+  margin: 22px 0 0;
+  padding: 0;
+  text-indent: 0;
+  text-align: left;
+  font-size: 11.5px;
+  color: var(--text-hint);
+}
+
+.chan-orphan__label {
+  letter-spacing: 0.04em;
+}
+
+/* 右侧浮层：从顶部菜单下沿一直伸到屏幕底部 */
+.chan-anno-pop {
+  position: fixed;
+  top: 45px; /* JS 会按顶部菜单实际高度改写；iframe 内是 0 */
+  right: 0;
+  bottom: 0;
+  z-index: 46;
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 24px));
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 16px 0 0 0;
+  box-shadow: -14px 0 44px rgba(36, 31, 22, 0.18);
+  animation: chan-pop-in 0.2s ease;
+}
+
+.chan-anno-pop[hidden] {
+  display: none;
+}
+
+@keyframes chan-pop-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.chan-anno-pop__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px 10px 16px;
   border-bottom: 1px solid var(--border-soft);
 }
 
-.chan-anno-panel__title {
+.chan-anno-pop__title {
   font-size: 13.5px;
   font-weight: 700;
+  letter-spacing: 0.02em;
   color: var(--text);
 }
 
-.chan-anno-panel__count {
+.chan-anno-pop__count {
   min-width: 21px;
   height: 19px;
   padding: 0 6px;
@@ -550,7 +812,7 @@ body.chan-page {
   font-variant-numeric: tabular-nums;
 }
 
-.chan-anno-panel__icon {
+.chan-anno-pop__icon {
   width: 26px;
   height: 26px;
   padding: 0;
@@ -564,45 +826,36 @@ body.chan-page {
   cursor: pointer;
 }
 
-.chan-anno-panel__head .chan-anno-panel__icon:first-of-type {
+.chan-anno-pop__head .chan-anno-pop__icon:first-of-type {
   margin-left: auto;
 }
 
-.chan-anno-panel__icon:hover {
+.chan-anno-pop__icon:hover {
   background: var(--tint-bg);
   color: var(--text);
 }
 
-.chan-anno-panel__hint {
-  margin: 0;
-  padding: 8px 14px 9px;
-  border-bottom: 1px solid var(--border-soft);
-  font-size: 11.5px;
-  line-height: 1.7;
-  color: var(--text-hint);
-}
-
-.chan-anno-panel__list {
+.chan-anno-pop__list {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 4px 6px 8px;
+  padding: 4px 10px 8px;
   scrollbar-width: thin;
   scrollbar-color: var(--muted) transparent;
 }
 
-.chan-anno-panel__list::-webkit-scrollbar {
+.chan-anno-pop__list::-webkit-scrollbar {
   width: 7px;
   height: 7px;
 }
 
-.chan-anno-panel__list::-webkit-scrollbar-thumb {
+.chan-anno-pop__list::-webkit-scrollbar-thumb {
   background: var(--muted);
   border-radius: 8px;
 }
 
-.chan-anno-panel__list::-webkit-scrollbar-track {
+.chan-anno-pop__list::-webkit-scrollbar-track {
   background: transparent;
 }
 
@@ -669,6 +922,16 @@ body.chan-page {
   font-weight: 600;
 }
 
+/* 编辑过的注释带一个小标 */
+.chan-anno-item__edited {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--tint-bg);
+  color: var(--text-hint);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
 .chan-anno-item__acts {
   display: flex;
   gap: 4px;
@@ -704,62 +967,15 @@ body.chan-page {
   color: var(--text-hint);
 }
 
-/* 悬浮按钮 */
-
-.chan-anno-fab {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 42px;
-  padding: 0 13px 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg);
-  color: var(--text-sec);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 10px 26px rgba(36, 31, 22, 0.16);
-  transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-}
-
-.chan-anno-fab:hover {
-  color: var(--accent-deep);
-  border-color: var(--accent);
-}
-
-.chan-anno-fab:active {
-  transform: scale(0.97);
-}
-
-.chan-anno-fab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.chan-anno-fab svg {
-  width: 17px;
-  height: 17px;
-}
-
-.chan-anno-fab__count {
-  min-width: 21px;
-  height: 21px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 11.5px;
-  font-weight: 700;
-  line-height: 21px;
+/* 浮层底部：一句话说明怎么加注释 */
+.chan-anno-pop__hint {
+  margin: 0;
+  padding: 8px 16px 9px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 11px;
+  line-height: 1.6;
   text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.chan-anno-fab__count[data-empty="true"] {
-  background: var(--muted);
-  color: var(--text-sec);
+  color: var(--text-hint);
 }
 
 /* 选中文字后浮出的小按钮 */
@@ -851,10 +1067,32 @@ body.chan-page {
   box-shadow: 0 22px 60px rgba(36, 31, 22, 0.28);
 }
 
-.chan-anno-dialog__title {
+.chan-anno-dialog__bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin: 0 0 12px;
+  padding-right: 28px; /* 让开右上角的关闭按钮 */
+  cursor: move;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chan-anno-dialog__grip {
+  flex: 0 0 auto;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: -2px;
+  color: var(--text-hint);
+}
+
+.chan-anno-dialog__title {
+  margin: 0;
   font-size: 16px;
   font-weight: 700;
+  pointer-events: none;
 }
 
 .chan-anno-dialog__close {
@@ -902,6 +1140,31 @@ body.chan-page {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-sec);
+}
+
+/* 署名自动取「我的名字」，只读 */
+.chan-anno-dialog__ro-mark {
+  margin-left: 2px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--tint-bg);
+  color: var(--text-hint);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.chan-anno-dialog__ro-hint {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-hint);
+}
+
+.chan-anno-dialog input[readonly] {
+  background: var(--tint-bg);
+  color: var(--text-sec);
+  cursor: default;
 }
 
 .chan-anno-dialog textarea,
@@ -1030,6 +1293,8 @@ body.chan-page {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 和输入框的左边缘对齐（compose 卡片 11px 内边距） */
+  padding-left: 11px;
 }
 
 .chan-comments__title {
@@ -1132,6 +1397,216 @@ body.chan-page {
   align-items: center;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* 提问附图：本地压缩后先显示小缩略图，列表里也只显示缩略图 */
+.chan-comments__file {
+  display: none;
+}
+
+.chan-comments__pick {
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid #d6c5a2;
+  border-radius: 8px;
+  background: #e3d4b7;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.chan-comments__pick:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #d8c6a3;
+  color: var(--accent-deep);
+}
+
+.chan-comments__pick:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chan-comments__pick-hint {
+  font-size: 11px;
+  color: var(--text-hint);
+}
+
+.chan-comments__thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.chan-comments__thumbs[hidden] {
+  display: none;
+}
+
+.chan-comments__thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--tint-bg);
+}
+
+.chan-comments__attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chan-comments__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chan-comments__thumb-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(36, 31, 22, 0.62);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.chan-comment__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.chan-comment__image {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--tint-bg);
+  cursor: zoom-in;
+}
+
+.chan-comment__image:hover {
+  border-color: var(--accent);
+}
+
+.chan-comment__images-note {
+  margin: 7px 0 0;
+  font-size: 11.5px;
+  color: var(--text-hint);
+}
+
+.chan-comment-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 96;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(36, 31, 22, 0.82);
+  cursor: zoom-out;
+}
+
+.chan-comment-viewer[hidden] {
+  display: none;
+}
+
+.chan-comment-viewer img {
+  width: auto;
+  height: auto;
+  max-width: min(1400px, 94vw);
+  max-height: 86vh;
+  border-radius: 10px;
+  background: #111;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  cursor: default;
+}
+
+.chan-comment-viewer__nav {
+  position: absolute;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(244, 236, 217, 0.92);
+  color: var(--text);
+  font: inherit;
+  font-size: 26px;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  transform: translateY(-50%);
+}
+
+.chan-comment-viewer__nav:hover {
+  background: #fff;
+}
+
+.chan-comment-viewer__nav:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chan-comment-viewer__nav--prev {
+  left: 20px;
+}
+
+.chan-comment-viewer__nav--next {
+  right: 20px;
+}
+
+.chan-comment-viewer__close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(244, 236, 217, 0.92);
+  color: var(--text);
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chan-comment-viewer__close:hover {
+  background: #fff;
+}
+
+.chan-comment-viewer__count {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(36, 31, 22, 0.6);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
 }
 
 .chan-comments__submit {
@@ -1316,8 +1791,26 @@ body.chan-page {
 
 /* ============================== 窄屏 ============================== */
 
+@media (max-width: 1180px) {
+  /* 地方不够时先收起「选中文字即可注释」这句提示 */
+  .chan-bar__hint {
+    display: none;
+  }
+}
+
 @media (max-width: 960px) {
-  .chan-layout {
+  /* 手机上浮层铺满整宽，上下沿仍由 JS 顶到菜单下沿 / 屏幕底部 */
+  .chan-anno-pop {
+    left: 0;
+    right: 0;
+    width: auto;
+    border-radius: 0;
+    border-left: 0;
+  }
+
+  .chan-layout,
+  .chan-layout.is-side-collapsed {
+    --chan-read: 100%;
     display: block;
     padding: 8px 16px 0;
   }
@@ -1339,10 +1832,19 @@ body.chan-page {
     box-shadow: 0 16px 40px rgba(36, 31, 22, 0.18);
     transform: translateX(-110%);
     visibility: hidden;
-    transition: transform 0.22s ease;
+    transition: transform 0.22s ease, opacity 0.16s ease;
   }
 
-  .chan-side.is-open {
+  /* 从桌面折叠态切到手机时，折叠样式不能把抽屉也藏起来 */
+  .chan-layout.is-side-collapsed .chan-side {
+    opacity: 1;
+    visibility: hidden;
+    pointer-events: auto;
+  }
+
+  .chan-side.is-open,
+  .chan-layout.is-side-collapsed .chan-side.is-open {
+    opacity: 1;
     transform: none;
     visibility: visible;
   }
@@ -1361,7 +1863,7 @@ body.chan-page {
   }
 
   .chan-bar__btn {
-    display: inline-block;
+    display: inline-flex;
   }
 
   .chan-bar__group {
@@ -1386,24 +1888,55 @@ body.chan-page {
     font-size: 16px;
   }
 
+  .chan-comments__pick-hint {
+    display: none;
+  }
+
+  .chan-bar,
   .chan-reader,
   .chan-disclaimer,
   .chan-page .lite-foot {
     max-width: none;
   }
 
-  .chan-anno-dock {
-    right: 0;
-    bottom: 10px;
+  .chan-para-anno {
+    height: 22px;
+    padding: 0 9px;
+    font-size: 12px;
   }
 
-  .chan-anno-panel {
-    width: min(calc(100vw - 24px), 420px);
-    max-height: min(54vh, 440px);
+  .chan-ai-dock {
+    right: 14px;
+    bottom: 14px;
   }
 
-  .chan-anno-fab {
+  .chan-ai-fab {
+    width: 36px;
+    height: auto;
+  }
+
+  .chan-ai-fab img {
+    width: 30px;
+    height: auto;
+  }
+
+  .chan-comment-viewer__nav {
+    width: 40px;
     height: 40px;
+    font-size: 22px;
+  }
+
+  .chan-comment-viewer__nav--prev {
+    left: 8px;
+  }
+
+  .chan-comment-viewer__nav--next {
+    right: 8px;
+  }
+
+  .chan-comment-viewer__close {
+    top: 10px;
+    right: 10px;
   }
 }
 
@@ -1416,15 +1949,26 @@ body.chan-page {
 
 @media (prefers-reduced-motion: reduce) {
   .side,
-  .chan-bar {
+  .chan-bar,
+  .chan-reader,
+  .chan-layout,
+  .chan-side {
     transition: none;
   }
 
-  .chan-anno-fab {
+  .chan-anno-pop {
+    animation: none;
+  }
+
+  .chan-ai-fab {
     transition: none;
   }
 
   .chan-anno-hl.is-flash {
+    animation: none;
+  }
+
+  .chan-para-anno.is-flash {
     animation: none;
   }
 }
@@ -1443,9 +1987,15 @@ body.chan-page {
   .topbar,
   .side-scrim,
   .chan-bar,
+  .chan-side,
+  .chan-toc-scrim,
   .lite-foot,
   .chan-disclaimer,
-  .chan-anno-dock,
+  .chan-para-anno,
+  .chan-orphan,
+  .chan-ai-dock,
+  .chan-comment-viewer,
+  .chan-anno-pop,
   .chan-anno-tip,
   .chan-anno-dialog,
   .chan-anno-toast,
@@ -1464,6 +2014,7 @@ body.chan-page {
   }
 
   .chan-layout {
+    display: block;
     padding: 0;
   }
 

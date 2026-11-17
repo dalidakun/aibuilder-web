@@ -1,7 +1,9 @@
-/* 缠论读书会 · 每课评论
-   - 每篇文章末尾一块评论区，任何用户都能发表评论、回复别人的评论；
-   - randeng 等管理员可置顶 / 删除任意评论，作者可删除自己的评论；
-   - 评论按 lessonNo 归属，课与课互不混淆；
+/* 缠论读书会 · 每课提问
+   - 每篇文章末尾一块「提问」区，任何用户都能提问、回复别人的提问；
+   - 提问可以附图片：图片先在本地压到长边 900px / JPEG 低质量再上传，
+     列表里只显示小缩略图，点开看压缩后的原图，控制流量与存储成本；
+   - randeng 等管理员可置顶 / 删除任意提问，作者可删除自己的提问；
+   - 提问按 lessonNo 归属，课与课互不混淆；
    - 身份与正文注释共用 localStorage 里的 clientId + secret，
      管理员由云函数 chanAdmins 里的 clientId + clientHash 判定。 */
 (function () {
@@ -75,6 +77,11 @@
   var toastEl = null;
   var toastTimer = 0;
   var CACHE_TTL = 60 * 1000;
+  // 附图：最多 3 张。优先保清晰度（长边 1600px），再按体积降质量。
+  var MAX_IMAGES = 3;
+  var MAX_EDGE = 1600;
+  var MAX_IMAGE_CHARS = 220000;
+  var MAX_TOTAL_CHARS = 660000;
   var myAvatar = "";
   var avatarTried = false;
   var avatarSaved = false;
@@ -123,6 +130,66 @@
       toastEl.hidden = true;
       toastTimer = 0;
     }, 2800);
+  }
+
+  // 本地压缩：长边 1600px、白底；先保分辨率，再逐档降 JPEG 质量。
+  // 只把压好的这一份存进数据库，列表里缩成小图显示。
+  function compressImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//i.test(file.type || "")) {
+        reject(new Error("bad_type"));
+        return;
+      }
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth || img.width;
+          var h = img.naturalHeight || img.height;
+          if (!w || !h) throw new Error("empty_image");
+          var scale = Math.min(1, MAX_EDGE / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale));
+          var ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement("canvas");
+          canvas.width = cw;
+          canvas.height = ch;
+          var ctx = canvas.getContext("2d");
+          // PNG 透明底转 JPEG 会变黑，先铺白底
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, cw, ch);
+          ctx.drawImage(img, 0, 0, cw, ch);
+          var q = 0.78;
+          var data = canvas.toDataURL("image/jpeg", q);
+          while (data.length > MAX_IMAGE_CHARS && q > 0.5) {
+            q -= 0.05;
+            data = canvas.toDataURL("image/jpeg", q);
+          }
+          if (data.length > MAX_IMAGE_CHARS) {
+            canvas.width = Math.max(1, Math.round(cw * 0.82));
+            canvas.height = Math.max(1, Math.round(ch * 0.82));
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            q = 0.62;
+            data = canvas.toDataURL("image/jpeg", q);
+            while (data.length > MAX_IMAGE_CHARS && q > 0.42) {
+              q -= 0.05;
+              data = canvas.toDataURL("image/jpeg", q);
+            }
+          }
+          resolve(data);
+        } catch (e) {
+          reject(e);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error("decode"));
+      };
+      img.src = url;
+    });
   }
 
   function activeSection() {
@@ -195,9 +262,12 @@
   function errorText(e) {
     var code = e && e.code ? e.code : "";
     if (code === "rate_limited") return "发得太频繁了，歇一会儿再试";
-    if (code === "empty_comment") return "评论不能为空";
-    if (code === "parent_deleted") return "这条评论已经被删除了";
+    if (code === "empty_comment") return "提问不能为空";
+    if (code === "parent_deleted") return "这条提问已经被删除了";
     if (code === "forbidden") return "没有权限执行这个操作";
+    if (code === "bad_image") return "图片格式不支持，换张图试试";
+    if (code === "too_many_images") return "最多只能放 3 张图片";
+    if (code === "image_too_large") return "图片太大了，换小一点的";
     if (code === "bad_request") return "内容有点问题，请检查后再试";
     return "网络不给力，请稍后重试";
   }
@@ -339,7 +409,7 @@
     box.innerHTML = "";
 
     var head = el("div", "chan-comments__head");
-    head.appendChild(el("h2", "chan-comments__title", "评论"));
+    head.appendChild(el("h2", "chan-comments__title", "提问"));
     var count = el(
       "span",
       "chan-comments__count",
@@ -348,13 +418,13 @@
     head.appendChild(count);
     if (state.admin) {
       var badge = el("span", "chan-comments__admin", "管理员");
-      badge.title = "你可以置顶或删除本课评论";
+      badge.title = "你可以置顶或删除本课提问";
       head.appendChild(badge);
     }
     var refresh = el("button", "chan-comments__refresh", "↻");
     refresh.type = "button";
-    refresh.setAttribute("aria-label", "刷新评论");
-    refresh.title = "刷新评论";
+    refresh.setAttribute("aria-label", "刷新提问");
+    refresh.title = "刷新提问";
     refresh.addEventListener("click", function () {
       reload();
     });
@@ -362,11 +432,11 @@
     box.appendChild(head);
 
     if (state.error) {
-      box.appendChild(el("p", "chan-comments__empty", "评论加载失败，点右上角 ↻ 重试。"));
+      box.appendChild(el("p", "chan-comments__empty", "提问加载失败，点右上角 ↻ 重试。"));
       return;
     }
     if (!state.comments) {
-      box.appendChild(el("p", "chan-comments__empty", "正在加载评论…"));
+      box.appendChild(el("p", "chan-comments__empty", "正在加载提问…"));
       return;
     }
 
@@ -390,7 +460,7 @@
 
     if (!tops.length) {
       list.appendChild(
-        el("p", "chan-comments__empty", "还没有评论，来说两句吧。")
+        el("p", "chan-comments__empty", "还没有提问，来问一个吧。")
       );
     } else {
       tops.forEach(function (top) {
@@ -407,45 +477,156 @@
     box.appendChild(list);
   }
 
+  // 提问框和回复框共用的附图选择器：选图 -> 本地压缩 -> 缩略图可删
+  function createImagePicker() {
+    var pending = [];
+    var busy = false;
+    var node = el("span", "chan-comments__attach");
+    var input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.className = "chan-comments__file";
+    input.setAttribute("aria-label", "添加图片");
+    var button = el("button", "chan-comments__pick", "添加图片");
+    button.type = "button";
+    button.title = "最多 3 张，自动压缩";
+    var hint = el("span", "chan-comments__pick-hint", "最多 3 张 · 自动压缩");
+    var thumbs = el("div", "chan-comments__thumbs");
+    thumbs.hidden = true;
+    node.appendChild(input);
+    node.appendChild(button);
+    node.appendChild(hint);
+
+    function totalChars() {
+      return pending.reduce(function (n, s) {
+        return n + s.length;
+      }, 0);
+    }
+
+    function renderThumbs() {
+      thumbs.innerHTML = "";
+      thumbs.hidden = !pending.length;
+      pending.forEach(function (src, i) {
+        var cell = el("span", "chan-comments__thumb");
+        var img = document.createElement("img");
+        img.src = src;
+        img.alt = "待发布图片 " + (i + 1);
+        cell.appendChild(img);
+        var del = el("button", "chan-comments__thumb-del", "×");
+        del.type = "button";
+        del.setAttribute("aria-label", "移除这张图片");
+        del.addEventListener("click", function () {
+          pending.splice(i, 1);
+          renderThumbs();
+        });
+        cell.appendChild(del);
+        thumbs.appendChild(cell);
+      });
+      button.disabled = busy || pending.length >= MAX_IMAGES;
+    }
+
+    input.addEventListener("change", function () {
+      var files = Array.prototype.slice.call(input.files || []);
+      input.value = "";
+      if (!files.length) return;
+      var room = MAX_IMAGES - pending.length;
+      if (room <= 0) {
+        toast("最多 3 张图片");
+        return;
+      }
+      if (files.length > room) toast("最多 3 张，只取前 " + room + " 张");
+      var chain = Promise.resolve();
+      files.slice(0, room).forEach(function (file) {
+        chain = chain
+          .then(function () {
+            return compressImage(file).then(function (src) {
+              if (totalChars() + src.length > MAX_TOTAL_CHARS) {
+                toast("图片总大小超了，换小一点的图");
+                return;
+              }
+              pending.push(src);
+              renderThumbs();
+            });
+          })
+          .catch(function () {
+            toast("这张图片读不出来，换一张试试");
+          });
+      });
+    });
+
+    button.addEventListener("click", function () {
+      if (!button.disabled) input.click();
+    });
+
+    return {
+      node: node,
+      thumbs: thumbs,
+      values: function () {
+        return pending.slice();
+      },
+      clear: function () {
+        pending = [];
+        renderThumbs();
+      },
+      setDisabled: function (v) {
+        busy = !!v;
+        button.disabled = busy || pending.length >= MAX_IMAGES;
+      },
+    };
+  }
+
   function composer() {
     var wrap = el("div", "chan-comments__compose");
     var ta = el("textarea");
     ta.maxLength = 1000;
-    ta.placeholder = "写下你对这一课的看法…";
-    ta.setAttribute("aria-label", "评论内容");
+    ta.placeholder = "写下你的问题…（可附图片）";
+    ta.setAttribute("aria-label", "提问内容");
     wrap.appendChild(ta);
 
+    var picker = createImagePicker();
+    wrap.appendChild(picker.thumbs);
+
     var row = el("div", "chan-comments__compose-row");
-    var btn = el("button", "chan-comments__submit", "发表评论");
+    var btn = el("button", "chan-comments__submit", "发布提问");
     btn.type = "button";
+    row.appendChild(picker.node);
     row.appendChild(btn);
     wrap.appendChild(row);
 
     function submit() {
       var text = String(ta.value || "").trim();
-      if (!text) {
-        toast("评论不能为空");
+      var images = picker.values();
+      if (!text && !images.length) {
+        toast("写点问题或加张图片");
         ta.focus();
         return;
       }
       var who = String(savedName() || "").trim().slice(0, 20);
       btn.disabled = true;
-      btn.textContent = "发表中…";
-      api("createChanComment", {
-        lessonNo: lessonNo,
-        parentId: "",
-        content: text,
-        name: who,
-        clientId: clientId,
-        clientSecret: secret,
-      })
+      picker.setDisabled(true);
+      btn.textContent = "发布中…";
+      api(
+        "createChanComment",
+        {
+          lessonNo: lessonNo,
+          parentId: "",
+          content: text,
+          images: images,
+          name: who,
+          clientId: clientId,
+          clientSecret: secret,
+        },
+        40000
+      )
         .then(function () {
-          toast("评论已发表");
+          toast("提问已发布");
           reload();
         })
         .catch(function (e) {
           btn.disabled = false;
-          btn.textContent = "发表评论";
+          btn.textContent = "发布提问";
+          picker.setDisabled(false);
           toast(errorText(e));
         });
     }
@@ -461,12 +642,135 @@
     return wrap;
   }
 
+  var viewer = null;
+  var viewerImages = [];
+  var viewerIndex = 0;
+
+  function ensureViewer() {
+    if (viewer) return;
+    viewer = el("div", "chan-comment-viewer");
+    viewer.setAttribute("role", "dialog");
+    viewer.setAttribute("aria-modal", "true");
+    viewer.setAttribute("aria-label", "查看图片");
+    var img = document.createElement("img");
+    img.alt = "提问图片";
+    var prev = el("button", "chan-comment-viewer__nav chan-comment-viewer__nav--prev", "‹");
+    prev.type = "button";
+    prev.setAttribute("aria-label", "上一张");
+    var next = el("button", "chan-comment-viewer__nav chan-comment-viewer__nav--next", "›");
+    next.type = "button";
+    next.setAttribute("aria-label", "下一张");
+    var close = el("button", "chan-comment-viewer__close", "×");
+    close.type = "button";
+    close.setAttribute("aria-label", "关闭");
+    var count = el("span", "chan-comment-viewer__count");
+    viewer.appendChild(img);
+    viewer.appendChild(prev);
+    viewer.appendChild(next);
+    viewer.appendChild(close);
+    viewer.appendChild(count);
+    prev.addEventListener("click", function (e) {
+      e.stopPropagation();
+      stepGallery(-1);
+    });
+    next.addEventListener("click", function (e) {
+      e.stopPropagation();
+      stepGallery(1);
+    });
+    close.addEventListener("click", function (e) {
+      e.stopPropagation();
+      closeGallery();
+    });
+    viewer.addEventListener("click", function (e) {
+      if (e.target === viewer) closeGallery();
+    });
+    // 手机上左右滑也能翻图
+    var sx = 0;
+    viewer.addEventListener(
+      "touchstart",
+      function (e) {
+        if (e.touches && e.touches.length === 1) sx = e.touches[0].clientX;
+      },
+      { passive: true }
+    );
+    viewer.addEventListener(
+      "touchend",
+      function (e) {
+        if (!sx || !e.changedTouches || !e.changedTouches.length) {
+          sx = 0;
+          return;
+        }
+        var dx = e.changedTouches[0].clientX - sx;
+        sx = 0;
+        if (Math.abs(dx) > 40) stepGallery(dx > 0 ? -1 : 1);
+      },
+      { passive: true }
+    );
+    viewer.hidden = true;
+    document.body.appendChild(viewer);
+  }
+
+  function renderViewer() {
+    if (!viewer) return;
+    var img = viewer.querySelector("img");
+    var prev = viewer.querySelector(".chan-comment-viewer__nav--prev");
+    var next = viewer.querySelector(".chan-comment-viewer__nav--next");
+    var count = viewer.querySelector(".chan-comment-viewer__count");
+    img.src = viewerImages[viewerIndex] || "";
+    prev.disabled = viewerIndex <= 0;
+    next.disabled = viewerIndex >= viewerImages.length - 1;
+    count.textContent =
+      viewerImages.length > 1 ? viewerIndex + 1 + " / " + viewerImages.length : "";
+    count.hidden = viewerImages.length <= 1;
+  }
+
+  function openGallery(images, start) {
+    if (!images || !images.length) return;
+    ensureViewer();
+    viewerImages = images.slice();
+    viewerIndex = Math.min(Math.max(start | 0, 0), viewerImages.length - 1);
+    renderViewer();
+    viewer.hidden = false;
+  }
+
+  function stepGallery(delta) {
+    if (!viewer || viewer.hidden) return;
+    var i = viewerIndex + delta;
+    if (i < 0 || i >= viewerImages.length) return;
+    viewerIndex = i;
+    renderViewer();
+  }
+
+  function closeGallery() {
+    if (viewer) viewer.hidden = true;
+  }
+
+  // 看图时左右键翻图，不要再触发 chan.js 的整课翻页
+  document.addEventListener(
+    "keydown",
+    function (e) {
+      if (!viewer || viewer.hidden) return;
+      if (e.key === "Escape") {
+        closeGallery();
+        return;
+      }
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        e.stopPropagation();
+        stepGallery(e.key === "ArrowLeft" ? -1 : 1);
+      }
+    },
+    true
+  );
+
   function commentEl(c, replies, isTop) {
     var box = el("article", "chan-comment");
     box.setAttribute("data-id", c.id);
     if (!isTop) box.classList.add("chan-comment--reply");
 
-    var who = String(c.name || "匿名读者").replace(/^@+/, "");
+    // 自己的内容用当前「我的名字」显示，别人用当时存的署名
+    var isMine = !!c.mine || !!(c.clientId && c.clientId === clientId);
+    var who = String((isMine ? savedName() : c.name) || "匿名读者").replace(/^@+/, "");
     box.setAttribute("data-client", c.clientId || "");
     box.appendChild(avatarNode(c, who));
 
@@ -474,13 +778,13 @@
     box.appendChild(main);
 
     var head = el("div", "chan-comment__head");
-    head.appendChild(el("span", "chan-comment__who", "@" + who));
+    head.appendChild(el("span", "chan-comment__who", who));
     if (!isTop && c.replyToName) {
       head.appendChild(
         el(
           "span",
           "chan-comment__replyto",
-          "回复 @" + String(c.replyToName).replace(/^@+/, "")
+          "回复 " + String(c.replyToName).replace(/^@+/, "")
         )
       );
     }
@@ -488,7 +792,30 @@
     head.appendChild(el("span", "chan-comment__time", formatTime(c.createdAt)));
     main.appendChild(head);
 
-    main.appendChild(el("p", "chan-comment__body", c.content || ""));
+    if (c.content) {
+      main.appendChild(el("p", "chan-comment__body", c.content));
+    }
+
+    if (c.images && c.images.length) {
+      var gallery = el("div", "chan-comment__images");
+      c.images.forEach(function (src, i) {
+        var img = document.createElement("img");
+        img.className = "chan-comment__image";
+        img.src = src;
+        img.alt = "图片";
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.addEventListener("click", function () {
+          openGallery(c.images, i);
+        });
+        gallery.appendChild(img);
+      });
+      main.appendChild(gallery);
+    } else if (c.imagesHidden) {
+      main.appendChild(
+        el("p", "chan-comment__images-note", "图片已省略（较早的提问）")
+      );
+    }
 
     var acts = el("div", "chan-comment__acts");
     var replyBtn = el("button", "", "回复");
@@ -534,15 +861,19 @@
     var form = el("div", "chan-comment__reply-form");
     var ta = el("textarea");
     ta.maxLength = 1000;
-    ta.placeholder = "回复 @" + String(comment.name || "匿名读者").replace(/^@+/, "") + "…";
+    ta.placeholder = "回复 " + String(comment.name || "匿名读者").replace(/^@+/, "") + "…";
     ta.setAttribute("aria-label", "回复内容");
     form.appendChild(ta);
+
+    var picker = createImagePicker();
+    form.appendChild(picker.thumbs);
 
     var row = el("div", "chan-comments__compose-row");
     var cancel = el("button", "chan-comments__cancel", "取消");
     cancel.type = "button";
     var send = el("button", "chan-comments__submit", "回复");
     send.type = "button";
+    row.appendChild(picker.node);
     row.appendChild(cancel);
     row.appendChild(send);
     form.appendChild(row);
@@ -561,27 +892,35 @@
 
     function submit() {
       var text = String(ta.value || "").trim();
-      if (!text) {
-        toast("回复不能为空");
+      var images = picker.values();
+      if (!text && !images.length) {
+        toast("写点回复或加张图片");
         ta.focus();
         return;
       }
       send.disabled = true;
+      picker.setDisabled(true);
       send.textContent = "回复中…";
-      api("createChanComment", {
-        lessonNo: lessonNo,
-        parentId: comment.id,
-        content: text,
-        name: savedName(),
-        clientId: clientId,
-        clientSecret: secret,
-      })
+      api(
+        "createChanComment",
+        {
+          lessonNo: lessonNo,
+          parentId: comment.id,
+          content: text,
+          images: images,
+          name: savedName(),
+          clientId: clientId,
+          clientSecret: secret,
+        },
+        40000
+      )
         .then(function () {
-          toast("回复已发表");
+          toast("回复已发布");
           reload();
         })
         .catch(function (e) {
           send.disabled = false;
+          picker.setDisabled(false);
           send.textContent = "回复";
           toast(errorText(e));
         });
@@ -597,7 +936,7 @@
   }
 
   function removeComment(id) {
-    if (!window.confirm("删除这条评论？")) return;
+    if (!window.confirm("删除这条提问？")) return;
     api("deleteChanComment", {
       id: id,
       clientId: clientId,

@@ -657,5 +657,6 @@ body.review-page {
 }
 
 html.is-embedded .review-layout {
-  padding: 10px 14px 12px;
+  /* 右边让出交易练习页那条「交易复盘」竖条的位置（它浮在最右边缘上） */
+  padding: 10px 32px 12px 14px;
 }

@@ -138,11 +138,6 @@
 
         <div class="chart__msg" id="chartMsg">正在加载 K 线…</div>
         </div>
-
-        <!-- 走势图右下角的「历史」悬浮按钮：点开从右侧滑出历史记录 -->
-        <button type="button" class="hist-fab" id="btnHisSlide" aria-label="历史记录" title="历史记录（平仓单）" aria-expanded="false" aria-controls="hisSlide">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
-        </button>
       </div>
     </div><!-- /.desk-main -->
 
@@ -290,14 +285,14 @@
 </footer>
     </section>
 
-    <!-- 交易复盘页：和行情页并排，整页左右推拉；iframe 内隐藏重复导航 -->
-    <section class="page-pane page-pane--review" id="reviewPane" aria-hidden="true" inert>
-      <iframe id="reviewFrame" title="交易复盘"></iframe>
-    </section>
-
-    <!-- 缠论读书会页：同上 -->
+    <!-- 缠论读书会页：和行情页并排，整页左右推拉；iframe 内隐藏重复导航 -->
     <section class="page-pane page-pane--chan" id="chanPane" aria-hidden="true" inert>
       <iframe id="chanFrame" title="缠论读书会"></iframe>
+    </section>
+
+    <!-- 乘法自选：和行情页并排，整页左右推拉；iframe 内隐藏重复导航 -->
+    <section class="page-pane page-pane--stocks" id="stocksPane" aria-hidden="true" inert>
+      <iframe id="stocksFrame" title="乘法自选"></iframe>
     </section>
 
     <!-- 燃灯页：和行情页并排，整页左右推拉；iframe 内隐藏重复导航 -->
@@ -313,30 +308,15 @@
   <button type="button" class="notes-slide__close" id="notesSlideClose" aria-label="关闭交易笔记" title="关闭">×</button>
 </aside>
 
-<!-- 历史记录：走势图右下角悬浮按钮点开，从右侧滑出（样式照笔记子页面） -->
-<aside class="his-slide" id="hisSlide" aria-label="历史记录" aria-hidden="true">
-  <div class="his-slide__head">
-    <b>历史记录</b>
-    <span class="his-slide__tip">平仓单，点一行可在走势图上闪一下</span>
-    <button type="button" class="his-slide__close" id="hisSlideClose" aria-label="关闭历史记录" title="关闭">×</button>
-  </div>
-  <div class="his-slide__body">
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th>时间</th>
-          <th>方向</th>
-          <th class="num">盈亏</th>
-          <th class="num">开仓价</th>
-          <th class="num">平仓价</th>
-          <th class="num">数量 (BTC)</th>
-        </tr>
-      </thead>
-      <tbody id="tblHis"></tbody>
-    </table>
-    <p class="his-slide__empty" id="hisEmpty">还没有平仓记录。开一单、平一单就会出现在这里。</p>
-  </div>
-</aside>
+<!-- 交易复盘：右侧边缘下部、搜索按钮上方的绿色竖排开关（照收起右侧面板那个 TRADE 竖条的做法），
+     折叠右侧栏时 TRADE 会回到右上角，这条开关在右下角，两者不重叠；
+     点一下从最右侧边缘一路铺到左侧边缘、整屏把顶栏和走势一起盖住；
+     展开后开关还露在原位，再点一下收起。iframe 里隐藏重复导航，进来直接是三栏复盘界面。 -->
+<section class="review-overlay" id="reviewOverlay" aria-label="交易复盘" aria-hidden="true" inert>
+  <iframe class="review-overlay__frame" id="reviewFrame" title="交易复盘"></iframe>
+</section>
+
+<button type="button" class="review-tab" id="btnReview" aria-controls="reviewOverlay" aria-expanded="false" aria-label="展开交易复盘" title="展开交易复盘">交易复盘</button>
 
 
 <!-- 均线编辑浮层 -->
@@ -491,6 +471,27 @@
     <div class="modal__actions">
       <button type="button" class="btn btn--ghost" id="resetCancel">取消</button>
       <button type="button" class="btn btn--primary" id="resetSubmit">确认重置</button>
+    </div>
+  </div>
+</div>
+
+<!-- 我的名字：注释 / 提问 / 回复的署名 -->
+<div class="modal" id="nameModal" hidden>
+  <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="nameTitle">
+    <h2 id="nameTitle">我的名字</h2>
+    <p>这个名字会显示在你发表的注释、提问和回复上；改完旧内容也会一起换成新名字。</p>
+
+    <div class="order" style="padding:14px 0 0">
+      <label class="field">
+        <span>我的名字</span>
+        <input type="text" id="displayNameInput" maxlength="20" placeholder="输入中文名字" autocomplete="nickname">
+      </label>
+      <div class="modal__err" id="nameErr"></div>
+    </div>
+
+    <div class="modal__actions">
+      <button type="button" class="btn btn--ghost" id="nameCancel">取消</button>
+      <button type="button" class="btn btn--primary" id="nameSave">保存</button>
     </div>
   </div>
 </div>

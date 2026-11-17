@@ -1,11 +1,13 @@
 /* 缠论读书会 · 跨用户正文注释
    1. 在正文里选中文字 → 浮出「注释」小按钮 → 写注释（不需要登录）；
    2. 注释按课存放，同一课所有用户的注释共用一份，课与课互不混淆；
-   3. 本课注释集中显示在右下角悬浮按钮里，点开是按条排列的面板：
-      每条上面是选中的原文，下面是注释内容；
-   4. 所有注释在正文里都有浅色标记，点标记可定位到对应条目；
+   3. 注释按「段落」聚合：某一段里有注释，这一段末尾就浮出一个小按钮「注 N」，
+      点它在右侧展开这一段所有读者的注释，再点一次（或点别处 / Esc）收起；
+      一个段落只有一个入口，段内所有注释都在这一个浮层里；
+   4. 正文画线只画「自己写的」注释，别人的注释不画线；段落入口的计数和浮层
+      始终是全量（所有人），点浮层里的「定位」会滚到那一段；
    5. 每课注释在本地缓存 5 分钟，同一课短时间内不重复请求云端，
-      面板右上角「↻」可强制刷新。
+      浮层右上角「↻」可强制刷新。
 
    数据走云函数（cloudfunctions/api/index.js）：
      getChanAnnotations / createChanAnnotation / deleteChanAnnotation
@@ -17,19 +19,21 @@
   var scrollBox = document.getElementById("chanScroll");
   var cfg = window.CHAN_CFG || {};
 
-  var dock = document.getElementById("chanAnnoDock");
-  var fab = document.getElementById("chanAnnoFab");
-  var fabCount = document.getElementById("chanAnnoFabCount");
-  var panel = document.getElementById("chanAnnoPanel");
-  var panelCount = document.getElementById("chanAnnoCount");
-  var panelList = document.getElementById("chanAnnoList");
-  var panelRefresh = document.getElementById("chanAnnoRefresh");
-  var panelClose = document.getElementById("chanAnnoClose");
+  var pop = document.getElementById("chanAnnoPop");
+  var popTitle = document.getElementById("chanAnnoTitle");
+  var popCount = document.getElementById("chanAnnoCount");
+  var popList = document.getElementById("chanAnnoList");
+  var popRefresh = document.getElementById("chanAnnoRefresh");
+  var popClose = document.getElementById("chanAnnoClose");
 
   var tip = document.getElementById("chanAnnoTip");
   var tipBtn = document.getElementById("chanAnnoAdd");
 
   var dialog = document.getElementById("chanAnnoDialog");
+  var dialogBox = document.querySelector(".chan-anno-dialog__box");
+  var dialogBar = document.getElementById("chanAnnoDialogBar");
+  var dlgTitle = document.getElementById("chanAnnoDialogTitle");
+  var dlgTip = document.getElementById("chanAnnoDialogTip");
   var dlgQuote = document.getElementById("chanAnnoDialogQuote");
   var dlgNote = document.getElementById("chanAnnoNote");
   var dlgNoteCount = document.getElementById("chanAnnoNoteCount");
@@ -40,7 +44,7 @@
   var dlgClose = document.getElementById("chanAnnoDialogClose");
 
   if (!reader || !scrollBox) return;
-  if (!dock || !fab || !panel || !panelList) return;
+  if (!pop || !popList) return;
   if (!dialog || !dlgNote || !dlgSubmit) return;
   if (!cfg.api || !cfg.key) return;
 
@@ -106,13 +110,29 @@
     return load(LS_NAME) || load(TRADE_USER_KEY) || "";
   }
 
+  // 注释署名：自动取「我的名字」（头像菜单里设置），没设置就退回账户名 / 匿名
+  function displayName() {
+    var n = String(savedName() || "")
+      .replace(/^@+/, "")
+      .trim()
+      .slice(0, 20);
+    return n || "匿名读者";
+  }
+
   /* -------------------------------------------------------------- 状态 */
 
   var cache = {}; // lessonNo -> { list: [], at: ts }
   var loading = {}; // lessonNo -> true
   var lessonNo = 0;
   var lessonTitle = "";
-  var panelOpen = false;
+
+  // 段落分组：groups[段落序号] = { el, list, orphan }；
+  // annoHost[注释 id] = 段落序号（点正文标记时用来展开对应段落）。
+  var groups = [];
+  var annoHost = {};
+  var activeHost = -1;
+  var popOpen = false;
+
   var pending = null; // 选中待写：{ anchor: {s,e}, quote }
   var editing = null; // 正在写：{ anchor, quote }
   var submitting = false;
@@ -234,7 +254,8 @@
     if (code === "empty_note") return "注释不能为空";
     if (code === "empty_quote") return "请先选中正文里的文字";
     if (code === "bad_request") return "内容有点问题，请检查后再试";
-    if (code === "forbidden") return "只能删除自己写的注释";
+    if (code === "not_found") return "这条注释已经不在了";
+    if (code === "forbidden") return "只能编辑或删除自己写的注释";
     return "网络不给力，请稍后重试";
   }
 
@@ -438,30 +459,171 @@
     }
   }
 
-  /* ------------------------------------------------------------ 数据加载 */
+  /* -------------------------------------------------------- 段落分组与入口 */
 
-  function updateCount() {
-    var text;
-    if (loading[lessonNo] && !cache[lessonNo]) text = "…";
-    else if (cache[lessonNo]) text = String(cache[lessonNo].list.length);
-    else text = "0";
-    if (fabCount) {
-      fabCount.textContent = text;
-      fabCount.setAttribute("data-empty", text === "0" ? "true" : "false");
+  // 注释入口可以挂在标题和正文段落上：标题上的注释就显示在标题处
+  function entryHosts(sec) {
+    var found = sec.querySelectorAll(
+      ".chan-lesson__title, .chan-prose p, .chan-prose h2, .chan-prose h3," +
+        " .chan-prose blockquote, .chan-prose li, .chan-prose figcaption"
+    );
+    var hosts = [];
+    var i;
+    for (i = 0; i < found.length; i += 1) {
+      var el = found[i];
+      if (el.classList.contains("chan-stamp")) continue;
+      if (el.classList.contains("chan-orphan")) continue;
+      if (!el.textContent || !el.textContent.trim()) continue;
+      hosts.push(el);
     }
-    if (panelCount) panelCount.textContent = text;
+    return hosts;
   }
 
-  function renderAnnotations(no) {
-    if (no !== lessonNo) {
-      updateCount();
-      return;
+  function blockIndexAt(layout, pos) {
+    var i;
+    for (i = 0; i < layout.blocks.length; i += 1) {
+      var s = layout.starts[i];
+      // +1 是块之间那个换行分隔符
+      if (pos >= s && pos < s + layout.texts[i].length + 1) return i;
     }
+    return -1;
+  }
+
+  // 注释落在哪个段落：表格 / 小标题这类块挂到最近的上一段，没有就挂下一段
+  function hostIndexFor(hosts, layout, blockIndex) {
+    var i;
+    var idx;
+    for (i = blockIndex; i >= 0; i -= 1) {
+      idx = hosts.indexOf(layout.blocks[i]);
+      if (idx >= 0) return idx;
+    }
+    for (i = blockIndex + 1; i < layout.blocks.length; i += 1) {
+      idx = hosts.indexOf(layout.blocks[i]);
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  }
+
+  // 把一课注释按段落聚合；原文改动后定位不到的旧注释单独归一组
+  function buildGroups(sec, list) {
+    var layout = blockLayout(sec);
+    var hosts = entryHosts(sec);
+    var grouped = hosts.map(function (el) {
+      return { el: el, list: [] };
+    });
+    var map = {};
+    var orphans = [];
+    var i;
+    for (i = 0; i < (list ? list.length : 0); i += 1) {
+      var a = list[i];
+      var range = resolveRange(layout, a);
+      var hi = -1;
+      if (range) {
+        var bi = blockIndexAt(layout, range.s);
+        if (bi >= 0) hi = hostIndexFor(hosts, layout, bi);
+      }
+      if (hi < 0) {
+        orphans.push(a);
+        continue;
+      }
+      grouped[hi].list.push(a);
+      if (a.id) map[a.id] = hi;
+    }
+    if (orphans.length) {
+      grouped.push({ el: null, orphan: true, list: orphans });
+    }
+    return { groups: grouped, annoHost: map };
+  }
+
+  function clearChips(sec) {
+    var chips = sec.querySelectorAll("button.chan-para-anno");
+    var i;
+    for (i = 0; i < chips.length; i += 1) {
+      if (chips[i].parentNode) chips[i].parentNode.removeChild(chips[i]);
+    }
+    var orphans = sec.querySelectorAll(".chan-prose .chan-orphan");
+    for (i = 0; i < orphans.length; i += 1) {
+      if (orphans[i].parentNode) orphans[i].parentNode.removeChild(orphans[i]);
+    }
+  }
+
+  // 按钮里不放文本节点：计数走 ::after，正文的文本流偏移才不会被按钮撑乱。
+  function makeChip(pi, count) {
+    var chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chan-para-anno";
+    chip.setAttribute("data-pi", String(pi));
+    chip.setAttribute("data-count", String(count));
+    chip.setAttribute("aria-controls", "chanAnnoPop");
+    chip.setAttribute("aria-expanded", "false");
+    chip.setAttribute("aria-label", "本段 " + count + " 条注释，展开");
+    chip.title = "本段 " + count + " 条注释";
+    return chip;
+  }
+
+  function renderChips(sec) {
+    var i;
+    for (i = 0; i < groups.length; i += 1) {
+      var g = groups[i];
+      if (!g.list.length) continue;
+      var chip = makeChip(i, g.list.length);
+      if (g.orphan) {
+        var prose = sec.querySelector(".chan-prose");
+        if (!prose) continue;
+        var p = document.createElement("p");
+        p.className = "chan-orphan";
+        var label = document.createElement("span");
+        label.className = "chan-orphan__label";
+        label.textContent = "更早的注释";
+        p.appendChild(label);
+        p.appendChild(chip);
+        prose.appendChild(p);
+      } else {
+        g.el.appendChild(chip);
+      }
+    }
+    syncChips(sec);
+  }
+
+  function syncChips(sec) {
+    sec = sec || activeSection();
+    if (!sec) return;
+    var chips = sec.querySelectorAll("button.chan-para-anno");
+    var i;
+    for (i = 0; i < chips.length; i += 1) {
+      var chip = chips[i];
+      var on = popOpen && Number(chip.getAttribute("data-pi")) === activeHost;
+      chip.classList.toggle("is-on", on);
+      chip.setAttribute("aria-expanded", on ? "true" : "false");
+      var count = Number(chip.getAttribute("data-count")) || 0;
+      chip.setAttribute("aria-label", "本段 " + count + " 条注释，" + (on ? "收起" : "展开"));
+    }
+  }
+
+  function renderLesson(sec, list) {
+    clearHighlights(sec);
+    clearChips(sec);
+    // 正文画线只画自己的：别人的注释点开段落入口就能看到，不铺满正文
+    var own = (list || []).filter(function (a) {
+      return a.mine;
+    });
+    applyHighlights(sec, own);
+    var built = buildGroups(sec, list);
+    groups = built.groups;
+    annoHost = built.annoHost;
+    renderChips(sec);
+  }
+
+  /* ------------------------------------------------------------ 数据加载 */
+
+  function renderAnnotations(no) {
+    if (no !== lessonNo) return;
     var sec = activeSection();
-    var data = cache[no];
-    if (sec && data) applyHighlights(sec, data.list);
-    updateCount();
-    if (panelOpen) renderPanel();
+    if (sec) renderLesson(sec, cache[no] ? cache[no].list : []);
+    if (popOpen) {
+      if (!groups[activeHost]) closePop();
+      else renderPop();
+    }
   }
 
   function cacheKey(no) {
@@ -548,11 +710,10 @@
       renderAnnotations(no);
       return;
     }
-    // 过期缓存先显示，后台再更新，避免面板空白闪一下。
+    // 过期缓存先显示，后台再更新，避免段落入口空白闪一下。
     if (cached) renderAnnotations(no);
     loading[no] = true;
-    updateCount();
-    if (panelOpen && no === lessonNo) renderPanel();
+    if (popOpen && no === lessonNo) renderPop();
     api("getChanAnnotations", { lessonNo: no, clientId: clientId })
       .then(function (j) {
         loading[no] = false;
@@ -560,19 +721,18 @@
         cache[no] = rec;
         writeStoredCache(no, rec);
         if (no === lessonNo) renderAnnotations(no);
-        else updateCount();
       })
       .catch(function () {
         loading[no] = false;
-        if (no === lessonNo) {
-          updateCount();
-          if (panelOpen) renderPanel(!cache[no]);
+        if (no === lessonNo && popOpen) {
+          // 有缓存就继续显示旧注释，别把用户正在看的内容清空
+          renderPop(!cache[no]);
           toast("注释加载失败，点右上角 ↻ 重试");
         }
       });
   }
 
-  /* -------------------------------------------------------------- 面板 */
+  /* -------------------------------------------------------------- 浮层 */
 
   function emptyLine(text) {
     var p = document.createElement("p");
@@ -603,7 +763,8 @@
 
     var who = document.createElement("span");
     who.className = "chan-anno-item__who";
-    who.textContent = a.name || "匿名读者";
+    var whoName = a.mine ? displayName() : a.name || "匿名读者";
+    who.textContent = String(whoName).replace(/^@+/, "");
     meta.appendChild(who);
 
     var time = document.createElement("time");
@@ -615,6 +776,13 @@
     time.textContent = formatTime(ts);
     meta.appendChild(time);
 
+    if (Number(a.updatedAt)) {
+      var edited = document.createElement("span");
+      edited.className = "chan-anno-item__edited";
+      edited.textContent = "已编辑";
+      meta.appendChild(edited);
+    }
+
     var acts = document.createElement("span");
     acts.className = "chan-anno-item__acts";
 
@@ -625,6 +793,12 @@
     acts.appendChild(locateBtn);
 
     if (a.mine) {
+      var editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.setAttribute("data-act", "edit");
+      editBtn.textContent = "编辑";
+      acts.appendChild(editBtn);
+
       var delBtn = document.createElement("button");
       delBtn.type = "button";
       delBtn.setAttribute("data-act", "del");
@@ -637,78 +811,129 @@
     return box;
   }
 
-  function renderPanel(failed) {
-    if (!panelList) return;
-    panelList.innerHTML = "";
+  function renderPop(failed) {
+    if (!popList) return;
+    popList.innerHTML = "";
+    var g = groups[activeHost];
+    if (!g) return;
+    if (popTitle) popTitle.textContent = g.orphan ? "更早的注释" : "注释";
+    if (popCount) popCount.textContent = String(g.list.length);
     if (failed) {
-      panelList.appendChild(emptyLine("注释加载失败，点右上角 ↻ 再试一次。"));
+      popList.appendChild(emptyLine("注释加载失败，点右上角 ↻ 再试一次。"));
       return;
     }
-    var data = cache[lessonNo];
-    if (!data) {
-      panelList.appendChild(emptyLine("正在加载本课注释…"));
+    if (!g.list.length) {
+      popList.appendChild(emptyLine("这里还没有注释。选中正文文字即可添加。"));
       return;
     }
-    if (!data.list.length) {
-      panelList.appendChild(
-        emptyLine("本课还没有注释。选中正文里的文字，写下第一条吧。")
-      );
-      return;
-    }
-    for (var i = 0; i < data.list.length; i += 1) {
-      panelList.appendChild(itemEl(data.list[i]));
+    for (var i = 0; i < g.list.length; i += 1) {
+      popList.appendChild(itemEl(g.list[i]));
     }
   }
 
-  function openPanel() {
-    if (!panel) return;
-    panel.hidden = false;
-    panelOpen = true;
-    fab.setAttribute("aria-expanded", "true");
+  // 顶部菜单（站内顶栏）下沿：iframe 内嵌时顶栏是 display:none，返回 0
+  function navOffset() {
+    var nav = document.querySelector(".topnav");
+    if (!nav) return 0;
+    var r = nav.getBoundingClientRect();
+    return r.height > 0 ? Math.max(0, Math.round(r.bottom)) : 0;
+  }
+
+  function placePop() {
+    if (!pop) return;
+    pop.style.top = navOffset() + "px";
+  }
+
+  // 展开某一段：pi 是段落序号，focusId 用于点正文标记时把对应那条滚进视野
+  function openPop(pi, focusId) {
+    if (!pop || !groups[pi]) return;
+    activeHost = pi;
+    popOpen = true;
+    placePop();
+    pop.hidden = false;
+    renderPop();
+    syncChips();
+    // 打开时缓存过期就让它在后台刷一次，看到的仍是最新注释
     var d = cache[lessonNo] || readStoredCache(lessonNo);
     if (d) cache[lessonNo] = d;
-    // 没缓存才请求；缓存过期也让 loadAnnotations 后台刷新，绝不每次打开都硬拉。
     if (!d) loadAnnotations(lessonNo, true);
     else if (Date.now() - d.at >= CACHE_TTL) loadAnnotations(lessonNo);
-    renderPanel();
+    if (focusId) focusItem(focusId);
   }
 
-  function closePanel() {
-    if (!panel || panel.hidden) return;
-    panel.hidden = true;
-    panelOpen = false;
-    fab.setAttribute("aria-expanded", "false");
+  function closePop() {
+    popOpen = false;
+    activeHost = -1;
+    if (pop) pop.hidden = true;
+    syncChips();
   }
 
-  function togglePanel() {
-    if (!panel.hidden) {
-      closePanel();
-      return;
+  function togglePop(pi) {
+    if (popOpen && activeHost === pi) closePop();
+    else openPop(pi);
+  }
+
+  function focusItem(id) {
+    if (!popList || !id) return;
+    var items = popList.querySelectorAll(".chan-anno-item");
+    var i;
+    for (i = 0; i < items.length; i += 1) {
+      if (items[i].getAttribute("data-id") === id) {
+        try {
+          items[i].scrollIntoView({ block: "nearest" });
+        } catch (e) {}
+        return;
+      }
     }
-    openPanel();
+  }
+
+  function findMark(sec, id) {
+    var marks = sec.querySelectorAll("mark.chan-anno-hl");
+    var i;
+    for (i = 0; i < marks.length; i += 1) {
+      if (marks[i].getAttribute("data-anno") === id) return marks[i];
+    }
+    return null;
+  }
+
+  function flashMark(mark) {
+    if (!mark) return;
+    mark.classList.add("is-flash");
+    window.setTimeout(function () {
+      mark.classList.remove("is-flash");
+    }, 1400);
+  }
+
+  // 别人的注释没有画线，定位时让段落入口闪一下，告诉用户是哪一段
+  function flashChip(pi) {
+    var sec = activeSection();
+    if (!sec) return;
+    var chip = sec.querySelector('button.chan-para-anno[data-pi="' + pi + '"]');
+    if (!chip) return;
+    chip.classList.add("is-flash");
+    window.setTimeout(function () {
+      chip.classList.remove("is-flash");
+    }, 1400);
   }
 
   function locate(id) {
     var sec = activeSection();
     if (!sec) return;
-    var marks = sec.querySelectorAll("mark.chan-anno-hl");
-    var mark = null;
-    var i;
-    for (i = 0; i < marks.length; i += 1) {
-      if (marks[i].getAttribute("data-anno") === id) {
-        mark = marks[i];
-        break;
-      }
-    }
-    if (!mark) {
-      toast("原文位置有变化，这条暂时定位不到");
+    var mark = findMark(sec, id);
+    if (mark) {
+      mark.scrollIntoView({ block: "center", behavior: "smooth" });
+      flashMark(mark);
       return;
     }
-    mark.scrollIntoView({ block: "center", behavior: "smooth" });
-    mark.classList.add("is-flash");
-    window.setTimeout(function () {
-      mark.classList.remove("is-flash");
-    }, 1400);
+    // 别人的注释没有正文画线：滚到它所在的那一段
+    var pi = annoHost[id];
+    var g = pi === undefined ? null : groups[pi];
+    if (g && g.el) {
+      g.el.scrollIntoView({ block: "center", behavior: "smooth" });
+      flashChip(pi);
+      return;
+    }
+    toast("原文位置有变化，这条暂时定位不到");
   }
 
   function removeAnnotation(id) {
@@ -728,17 +953,14 @@
           writeStoredCache(lessonNo, d);
         }
         renderAnnotations(lessonNo);
+        // 这一段删空后入口也不见了，浮层跟着收起
+        if (!groups[activeHost] || !groups[activeHost].list.length) closePop();
         toast("已删除");
       })
       .catch(function (e) {
         toast(errorText(e));
       });
   }
-
-  /* -------------------------------------------------------------- 悬浮球 */
-
-  // 悬浮球固定在正文右下角，不跟随正文滚动，也不因落款条出现而移动。
-  // 位置完全交给 CSS（.chan-anno-dock），这里不再做任何动态计算。
 
   /* ------------------------------------------------------------ 选中文字 */
 
@@ -763,6 +985,8 @@
     var y = coarse ? rect.top - tipH - 10 : rect.bottom + 10;
     if (y < 8) y = rect.bottom + 10;
     if (y + tipH > window.innerHeight - 8) y = Math.max(8, rect.top - tipH - 10);
+    // 选区在视口外时也别把按钮画到屏幕外面去
+    y = Math.min(Math.max(y, 8), window.innerHeight - tipH - 8);
     var left = Math.min(Math.max(x - tipW / 2, 8), window.innerWidth - tipW - 8);
     tip.style.left = left + "px";
     tip.style.top = y + "px";
@@ -821,19 +1045,118 @@
     dlgError.hidden = false;
   }
 
+  /* 注释弹层可以按住标题栏拖动，但不会跑出屏幕 */
+  function setupDialogDrag() {
+    if (!dialogBox || !dialogBar) return;
+    var startX = 0;
+    var startY = 0;
+    var baseX = 0;
+    var baseY = 0;
+    var dragging = false;
+
+    function onDown(e) {
+      if (e.button !== undefined && e.button !== 0) return;
+      if (dialog.hidden) return;
+      var rect = dialogBox.getBoundingClientRect();
+      baseX = rect.left;
+      baseY = rect.top;
+      startX = e.clientX;
+      startY = e.clientY;
+      dragging = true;
+      try {
+        dialogBar.setPointerCapture(e.pointerId);
+      } catch (err) {}
+      if (e.cancelable) e.preventDefault();
+    }
+
+    function onMove(e) {
+      if (!dragging) return;
+      var w = dialogBox.offsetWidth;
+      var h = dialogBox.offsetHeight;
+      var left = baseX + e.clientX - startX;
+      var top = baseY + e.clientY - startY;
+      left = Math.min(Math.max(left, 8), Math.max(8, window.innerWidth - w - 8));
+      top = Math.min(Math.max(top, 8), Math.max(8, window.innerHeight - h - 8));
+      dialogBox.style.transform =
+        "translate(" + (left - baseX) + "px," + (top - baseY) + "px)";
+    }
+
+    function onUp(e) {
+      if (!dragging) return;
+      dragging = false;
+      try {
+        dialogBar.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+    }
+
+    dialogBar.addEventListener("pointerdown", onDown);
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+    window.addEventListener("resize", function () {
+      if (dialogBox && !dialog.hidden) dialogBox.style.transform = "";
+    });
+  }
+
+  setupDialogDrag();
+
+  // 弹层既能新建也能编辑：editing.id 有值就是编辑自己已有的那条
   function openCompose() {
     if (!pending) return;
-    editing = pending;
+    var p = pending;
     pending = null;
     hideTip();
+    showCompose({
+      id: "",
+      quote: p.quote,
+      anchor: p.anchor,
+      note: "",
+      name: savedName(),
+    });
+  }
 
+  function openEdit(id) {
+    var d = cache[lessonNo];
+    var item = null;
+    var i;
+    if (d) {
+      for (i = 0; i < d.list.length; i += 1) {
+        if (d.list[i].id === id) {
+          item = d.list[i];
+          break;
+        }
+      }
+    }
+    if (!item || !item.mine) {
+      toast("只能编辑自己写的注释");
+      return;
+    }
+    showCompose({
+      id: item.id,
+      quote: item.quote || "",
+      anchor: item.anchor || null,
+      note: item.note || "",
+      name: item.name || "",
+    });
+  }
+
+  function showCompose(data) {
+    var isEdit = !!data.id;
+    if (dialogBox) dialogBox.style.transform = "";
+    editing = { id: data.id, quote: data.quote, anchor: data.anchor };
     dlgQuote.textContent = editing.quote || "";
-    dlgNote.value = "";
-    if (dlgNoteCount) dlgNoteCount.textContent = "0";
-    dlgName.value = savedName();
+    dlgNote.value = data.note || "";
+    if (dlgNoteCount) dlgNoteCount.textContent = String(dlgNote.value.length);
+    dlgName.value = displayName();
+    if (dlgTitle) dlgTitle.textContent = isEdit ? "编辑注释" : "添加注释";
+    if (dlgTip) {
+      dlgTip.textContent = isEdit
+        ? "保存后，本课所有读者都会看到更新后的内容。"
+        : "发布后，本课所有读者都能看到这条注释。";
+    }
     if (dlgError) dlgError.hidden = true;
     dlgSubmit.disabled = false;
-    dlgSubmit.textContent = "发布";
+    dlgSubmit.textContent = isEdit ? "保存" : "发布";
     submitting = false;
     dialog.hidden = false;
     window.setTimeout(function () {
@@ -843,29 +1166,79 @@
     }, 40);
   }
 
+  function submitLabel() {
+    return editing && editing.id ? "保存" : "发布";
+  }
+
   function closeCompose() {
     dialog.hidden = true;
+    if (dialogBox) dialogBox.style.transform = "";
     editing = null;
     submitting = false;
     dlgSubmit.disabled = false;
     dlgSubmit.textContent = "发布";
+    if (dlgTitle) dlgTitle.textContent = "添加注释";
+    if (dlgTip) dlgTip.textContent = "发布后，本课所有读者都能看到这条注释。";
   }
 
   function submitCompose() {
     if (!editing || submitting) return;
     var note = String(dlgNote.value || "").trim();
     if (!note) {
-      showError("写点什么再发布吧");
+      showError("写点什么再保存吧");
       dlgNote.focus();
       return;
     }
-    var name = String(dlgName.value || "").trim().slice(0, 20);
+    var name = displayName();
+    var snapshot = editing;
+    var isEdit = !!snapshot.id;
+
     submitting = true;
     dlgSubmit.disabled = true;
-    dlgSubmit.textContent = "发布中…";
+    dlgSubmit.textContent = isEdit ? "保存中…" : "发布中…";
     if (dlgError) dlgError.hidden = true;
 
-    var snapshot = editing;
+    if (isEdit) {
+      api(
+        "updateChanAnnotation",
+        {
+          id: snapshot.id,
+          note: note,
+          name: name,
+          clientId: clientId,
+          clientSecret: secret,
+        },
+        20000
+      )
+        .then(function (j) {
+          submitting = false;
+          var d = cache[lessonNo];
+          if (d) {
+            var i;
+            for (i = 0; i < d.list.length; i += 1) {
+              if (d.list[i].id === snapshot.id) {
+                d.list[i].note = j.note || note;
+                d.list[i].name = j.name || name || "匿名读者";
+                d.list[i].updatedAt = j.updatedAt || Date.now();
+                break;
+              }
+            }
+            d.at = Date.now();
+            writeStoredCache(lessonNo, d);
+          }
+          closeCompose();
+          renderAnnotations(lessonNo);
+          toast("注释已更新");
+        })
+        .catch(function (e) {
+          submitting = false;
+          dlgSubmit.disabled = false;
+          dlgSubmit.textContent = submitLabel();
+          showError(errorText(e));
+        });
+      return;
+    }
+
     api(
       "createChanAnnotation",
       {
@@ -882,7 +1255,6 @@
     )
       .then(function (j) {
         submitting = false;
-        if (name) store(LS_NAME, name);
         var item = {
           id: j.id,
           quote: snapshot.quote,
@@ -890,6 +1262,7 @@
           name: j.name || name || "匿名读者",
           anchor: snapshot.anchor,
           createdAt: j.createdAt || Date.now(),
+          updatedAt: 0,
           mine: true,
         };
         var d = cache[lessonNo];
@@ -903,36 +1276,31 @@
         closeCompose();
         clearSelection();
         renderAnnotations(lessonNo);
-        if (panel.hidden) openPanel();
-        else renderPanel();
+        var pi = annoHost[item.id];
+        if (pi !== undefined) openPop(pi, item.id);
         toast("注释已发布");
         locate(item.id);
       })
       .catch(function (e) {
         submitting = false;
         dlgSubmit.disabled = false;
-        dlgSubmit.textContent = "发布";
+        dlgSubmit.textContent = submitLabel();
         showError(errorText(e));
       });
   }
 
   /* -------------------------------------------------------------- 事件 */
 
-  if (fab) {
-    fab.addEventListener("click", function () {
-      togglePanel();
-    });
-  }
-  if (panelClose) panelClose.addEventListener("click", closePanel);
-  if (panelRefresh) {
-    panelRefresh.addEventListener("click", function () {
+  if (popClose) popClose.addEventListener("click", closePop);
+  if (popRefresh) {
+    popRefresh.addEventListener("click", function () {
       loadAnnotations(lessonNo, true);
-      if (panelOpen) renderPanel();
+      if (popOpen) renderPop();
     });
   }
 
-  if (panelList) {
-    panelList.addEventListener("click", function (e) {
+  if (popList) {
+    popList.addEventListener("click", function (e) {
       var hit = e.target.closest ? e.target.closest("[data-act]") : null;
       if (!hit) return;
       var item = hit.closest ? hit.closest(".chan-anno-item") : null;
@@ -940,9 +1308,11 @@
       var id = item.getAttribute("data-id");
       var act = hit.getAttribute("data-act");
       if (act === "locate") {
-        // 手机上面板几乎盖满屏，先收起再看正文，否则定位到的文字被挡住
-        if (window.innerWidth <= 960) closePanel();
+        // 浮层在窄屏是底部抽屉，先收起再看正文，否则定位到的文字被挡住
+        if (window.innerWidth <= 1100) closePop();
         locate(id);
+      } else if (act === "edit") {
+        openEdit(id);
       } else if (act === "del") {
         removeAnnotation(id);
       }
@@ -964,11 +1334,7 @@
 
   if (dlgCancel) dlgCancel.addEventListener("click", closeCompose);
   if (dlgClose) dlgClose.addEventListener("click", closeCompose);
-  if (dialog) {
-    dialog.addEventListener("click", function (e) {
-      if (e.target === dialog) closeCompose();
-    });
-  }
+  // 点弹层外面的遮罩不关闭：避免写到一半误点丢失，只能 × / 取消 / Esc
   if (dlgSubmit) dlgSubmit.addEventListener("click", submitCompose);
   if (dlgNote) {
     dlgNote.addEventListener("input", function () {
@@ -991,10 +1357,15 @@
   }
 
   document.addEventListener("click", function (e) {
-    if (!panelOpen) return;
-    if (panel.contains(e.target) || fab.contains(e.target)) return;
-    if (e.target.closest && e.target.closest("mark.chan-anno-hl")) return;
-    closePanel();
+    // 写注释弹层是模态的：点外面什么都不关，只能用右上角 × / 取消 / Esc
+    if (dialog && !dialog.hidden) return;
+    if (!popOpen) return;
+    if (pop.contains(e.target)) return;
+    var target = e.target;
+    // 点段落入口 / 正文标记由它们自己的处理器负责，别在这里又关掉
+    if (target.closest && target.closest("button.chan-para-anno")) return;
+    if (target.closest && target.closest("mark.chan-anno-hl")) return;
+    closePop();
   });
 
   // 写注释弹层打开时，方向键不能再触发 chan.js 的整课翻页，
@@ -1016,7 +1387,7 @@
       closeCompose();
       return;
     }
-    if (panelOpen) closePanel();
+    if (popOpen) closePop();
     hideTip();
   });
 
@@ -1039,17 +1410,31 @@
   }
   window.addEventListener("resize", function () {
     hideTip();
+    if (popOpen) placePop();
   });
 
-  // 点正文里的标记 → 打开面板并定位到对应那条
+  // 点正文里的标记 → 展开标记所在段落的浮层，并把这一条滚进视野
   reader.addEventListener("click", function (e) {
-    var mark = e.target.closest ? e.target.closest("mark.chan-anno-hl") : null;
+    var target = e.target;
+    var chip = target.closest ? target.closest("button.chan-para-anno") : null;
+    if (chip) {
+      var sel0 = window.getSelection();
+      if (sel0 && !sel0.isCollapsed) return;
+      togglePop(Number(chip.getAttribute("data-pi")));
+      return;
+    }
+    var mark = target.closest ? target.closest("mark.chan-anno-hl") : null;
     if (!mark) return;
     var sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
     var id = mark.getAttribute("data-anno");
-    if (panel.hidden) openPanel();
-    if (id) locate(id);
+    var pi = id ? annoHost[id] : undefined;
+    if (pi === undefined || !groups[pi]) {
+      toast("这条注释的位置有变化，暂时展开不了");
+      return;
+    }
+    openPop(pi, id);
+    flashMark(mark);
   });
 
   // 换课：chan.js 在 show() 里广播
@@ -1061,8 +1446,9 @@
     var stored = readStoredCache(no);
     if (stored) cache[no] = stored;
     hideTip();
-    closePanel();
-    updateCount();
+    closePop();
+    groups = [];
+    annoHost = {};
     loadAnnotations(no);
   });
 
@@ -1076,7 +1462,6 @@
     pruneStoredCaches(lessonNo);
     var stored = readStoredCache(lessonNo);
     if (stored) cache[lessonNo] = stored;
-    updateCount();
     loadAnnotations(lessonNo);
   })();
 })();

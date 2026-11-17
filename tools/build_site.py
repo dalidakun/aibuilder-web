@@ -535,14 +535,12 @@ def build_communities(common: dict) -> int:
 
 SIDE_ICONS = {
     "trade": '<path d="M4 19.5V4.5"/><path d="M4 19.5h16"/><path d="M7.5 15.5l4-4.5 3 3 4.5-6"/>',
-    "review": (
-        '<path d="M7 3.8h10a1.6 1.6 0 0 1 1.6 1.6V20H5.4V5.4A1.6 1.6 0 0 1 7 3.8Z"/>'
-        '<path d="M9 3.8h6v2.6H9z"/><path d="M8.6 11h6.8"/><path d="M8.6 14.6h6.8"/>'
-        '<path d="M8.6 18.2h4"/>'
-    ),
     "chan": (
         '<path d="M12 6.6C10.5 5.3 8.4 4.7 5.6 4.7V18c2.8 0 4.9.6 6.4 1.9'
         ' 1.5-1.3 3.6-1.9 6.4-1.9V4.7c-2.8 0-4.9.6-6.4 1.9Z"/><path d="M12 6.6V20"/>'
+    ),
+    "stocks": (
+        '<path d="m12 4.2 2.3 4.7 5.2.8-3.8 3.7.9 5.2-4.6-2.4-4.6 2.4.9-5.2-3.8-3.7 5.2-.8z"/>'
     ),
     "app": (
         '<path d="M12 3.6 20 7.3l-8 3.7-8-3.7z"/><path d="M4 12l8 3.7 8-3.7"/>'
@@ -552,16 +550,19 @@ SIDE_ICONS = {
 
 SIDE_LINKS = (
     ("trade", "index.html", "交易练习", ""),
-    ("review", "review/index.html", "交易复盘", ""),
     ("chan", "chan/index.html", "缠中说禅", ""),
+    ("stocks", "stocks/index.html", "乘法自选", ""),
     ("app", "index.html#app", "大正藏经", ""),
 )
 
 # 哪个页面高亮哪一项
+# 交易复盘（review/index.html）不再进菜单：它现在挂在交易练习页右下角按钮上，
+# 单独打开时高亮「交易练习」。
 NAV_CURRENT = {
     "index.html": "trade",
-    "review/index.html": "review",
+    "review/index.html": "trade",
     "chan/index.html": "chan",
+    "stocks/index.html": "stocks",
     "app/index.html": "app",
 }
 
@@ -572,6 +573,7 @@ TRADE_ACCOUNT_SIDE = """<div class="topnav__account">
       </button>
       <div class="acct-menu" id="acctMenu" role="menu" aria-label="账户" hidden>
         <div class="acct-menu__who" id="menuWho">未登录 · 本机账户</div>
+        <button type="button" role="menuitem" data-act="name" id="menuName">我的名字</button>
         <button type="button" role="menuitem" data-act="avatar" id="menuAvatar" hidden>更换头像</button>
         <button type="button" role="menuitem" data-act="login" id="menuLogin">登录 / 注册</button>
         <button type="button" role="menuitem" data-act="phone" id="menuPhone" hidden>绑定手机号</button>
@@ -586,13 +588,14 @@ def render_side(common: dict, rel: str, current: str, extra: str = "", views: bo
     """渲染全站统一的顶部横向菜单。
 
     current 决定哪一项高亮；extra 放左上角那块（交易练习页是账户头像）；
-    views=True 是交易练习页（单页四条轨道），四项都带 data-view。
+    views=True 是交易练习页（单页四条轨道），站内轨道页都带 data-view。
     """
     items = []
     for key, href, label, extra_attrs in SIDE_LINKS:
         on = key == current
         attrs = f' data-nav="{key}"' + extra_attrs
-        if views:
+        # 首页四个内嵌视图都带 data-view；stocks 现在也是其中之一。
+        if views and key in {"trade", "chan", "stocks", "app"}:
             attrs += f' data-view="{key}"'
         if on:
             attrs += ' aria-current="page"'
@@ -690,7 +693,7 @@ def _chan_lesson_html(lesson: dict, rel: str) -> str:
         f'  </header>\n'
         f'  <div class="chan-prose">\n{body}\n  </div>\n'
         f'  <section class="chan-comments" data-lesson-comments="{no}"'
-        f' aria-label="第 {no} 课评论"></section>\n'
+        f' aria-label="第 {no} 课提问"></section>\n'
         f"</section>"
     )
 
@@ -935,7 +938,7 @@ def build(args: argparse.Namespace) -> pathlib.Path:
         nav_key = NAV_CURRENT.get(rel_path.as_posix(), "")
         extra = TRADE_ACCOUNT_SIDE.format(rel=rel) if rel_path.as_posix() == "index.html" else ""
         page["SITE_NAV"] = render_side(
-            common, rel, nav_key, extra=extra, views=nav_key == "trade"
+            common, rel, nav_key, extra=extra, views=rel_path.as_posix() == "index.html"
         )
 
         out = src.read_text(encoding="utf-8")

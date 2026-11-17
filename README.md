@@ -16,6 +16,8 @@
 | `site/index.html` | 首页（BTC 行情 / 模拟盘），`#app` 是燃灯 App 视图（iframe 到 `site/app/`） |
 | `site/download.html`、`site/app/` | 下载页与 App 介绍页 |
 | `site/post.html`、`site/note.html`、`site/notes/`、`site/review/`、`site/trade/`、`site/changelog.html` | 分享落地页、交易笔记、复盘、行情子页、更新日志 |
+| `site/stocks/`、`site/assets/js/stocks.js`、`site/assets/stocks.css` | 乘法自选（临界点 / 比价关系）独立菜单页，纯前端；320 个行业板块，板块/个股各自选 1 小时 / 日线 / 周线（比价关系下个股周期灰显），固定 MA250，无导出；比价表支持右键置顶/取消置顶/移到底部/移回上方，左侧栏可折叠；个股单击选中、双击弹不复权走势图（临界点含 5 年数据，比价关系仅走势） |
+| `site/assets/data/stock-boards.json` | 行业板块静态目录（320 个，无 Key 时兜底） |
 | `site/community.template.html` + `site/data/communities.json` | 20 个栏目邀请页（构建时生成 20 页） |
 | `site/chan.template.html` + `site/data/chan-lessons.json` | 缠论读书会（108 课） |
 | `site/legal.template.html` + `site/data/legal/*.md` | 隐私政策 / 用户协议 |
@@ -64,6 +66,10 @@ tcb fn code update api --dir cloudfunctions/api -e randeng-d8gs968w22a3d98e8
 - 更新日志：`site/changelog.json`
 - 缠论 108 课：`site/data/chan-lessons.json`（`tools/extract_chan.py` 生成）+ `site/assets/chan/`
 - 行情 / 交易 / 复盘页：`site/trade/`、`site/index.html`、`site/assets/js/trade.js`
+- A股比价页（菜单名「乘法自选」）：`site/stocks/index.html` + `site/assets/{stocks.css,js/stocks.js,data/stock-boards.json}`，
+  320 个行业板块、板块 / 个股各自三周期、固定 MA250；空输入算全部板块；比价表右键置顶/取消置顶/移到底部/移回上方；个股单击选中、双击看不复权 1 小时走势（临界点含 5 年数据，比价关系仅走势）；左侧栏可折叠；数据源与缓存见 `docs/A股比价网页版.md`
+- 首页左右轨道：`site/index.html` 的 `stocksPane` + `site/assets/js/trade.js` 的 `PANES`（乘法自选作为第四页）
+- 顶部导航：`tools/build_site.py` 的 `SIDE_LINKS` / `SIDE_ICONS` / `NAV_CURRENT`（新增页面时三处一起改）
 
 ## 与 App 的边界（App 不受影响的关键）
 

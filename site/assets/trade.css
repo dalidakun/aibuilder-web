@@ -132,12 +132,12 @@ body.page-trade {
   will-change: transform;
 }
 
-/* 四页轨道：交易练习 → 交易复盘 → 缠论读书会 → 大正藏经 */
-.page-track[data-pane="review"] {
+/* 四页轨道：交易练习 → 缠论读书会 → 乘法自选 → 大正藏经 */
+.page-track[data-pane="chan"] {
   transform: translateX(-25%);
 }
 
-.page-track[data-pane="chan"] {
+.page-track[data-pane="stocks"] {
   transform: translateX(-50%);
 }
 
@@ -151,15 +151,27 @@ body.page-trade {
   height: 100%;
 }
 
-.page-pane--review,
 .page-pane--chan {
   position: relative;
   overflow: hidden;
   background: var(--bg);
 }
 
-.page-pane--review iframe,
 .page-pane--chan iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg);
+}
+
+.page-pane--stocks {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.page-pane--stocks iframe {
   display: block;
   width: 100%;
   height: 100%;
@@ -2051,140 +2063,98 @@ body.is-fs {
   border-bottom-color: var(--accent);
 }
 
-/* 走势图右下角悬浮的「历史」按钮：小圆钮、淡淡的，点开历史记录 */
-.hist-fab {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 8;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(36, 31, 22, 0.42);
-  color: #F7F0DE;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(36, 31, 22, 0.16);
-  transition: background 0.15s, transform 0.15s;
-}
+/* ---------------------- 交易复盘：右侧边缘下部的绿色竖条 + 整屏浮层 ----------------------
+   复盘从「顶部菜单里的一个轨道页」变成交易练习的附属页面：
+   开关照收起右侧面板那个 TRADE 竖条的做法（竖排、圆角朝左、贴在右边缘），
+   但换成绿色底、白字，位置在右下角、搜索按钮上方 —— 不能压住 TRADE（折叠后它会在右上角），
+   也不能压住「自选」栏的搜索按钮。点一下从最右侧边缘向左揭开，一直铺到左侧边缘、
+   连顶栏和上面的走势一起盖住；展开后这条竖条还露在原位，再点一下就收起（不用 × 收）。 */
 
-.hist-fab svg {
-  width: 15px;
-  height: 15px;
-}
-
-.hist-fab:hover {
-  background: rgba(36, 31, 22, 0.62);
-}
-
-.hist-fab.is-on {
-  background: rgba(36, 31, 22, 0.62);
-}
-
-/* 历史记录子页面：右边界钉在走势图右边界（right 由 JS 按走势图算），
-   展开 / 折叠都是从这里往左揭开，任何时候都不会越过走势图右边 */
-.his-slide {
+.review-tab {
   position: fixed;
-  top: 0;
+  top: auto;
+  bottom: 92px;
   right: 0;
-  bottom: 0;
-  z-index: 100;
-  width: min(560px, calc(100% - 180px));
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  border-radius: 14px 0 0 14px;
-  box-shadow: -14px 0 40px rgba(36, 31, 22, 0.18);
-  clip-path: inset(0 0 0 100%);
-  visibility: hidden;
-  transition: clip-path 0.32s cubic-bezier(0.22, 0.7, 0.24, 1), visibility 0s linear 0.32s;
-  pointer-events: none;
-}
-
-.his-slide.is-open {
-  clip-path: inset(0 0 0 0);
-  visibility: visible;
-  transition: clip-path 0.32s cubic-bezier(0.22, 0.7, 0.24, 1), visibility 0s linear 0s;
-  pointer-events: auto;
-}
-
-.his-slide__head {
-  flex: none;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 14px 18px 10px;
-  border-bottom: 1px solid var(--line);
-}
-
-.his-slide__head b {
-  font-size: 15px;
-}
-
-.his-slide__tip {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-hint);
+  z-index: 160;
+  width: 22px;
+  padding: 10px 0;
+  border: 0;
+  border-radius: 8px 0 0 8px;
+  background: var(--accent-deep);
+  color: #F7F0DE;
+  font: inherit;
   font-size: 11px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.his-slide__close {
-  margin-left: auto;
-  align-self: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--border-soft);
-  border-radius: 50%;
-  background: var(--card);
-  color: var(--text-sec);
-  font-size: 18px;
+  font-weight: 600;
   line-height: 1;
-  cursor: pointer;
-}
-
-.his-slide__close:hover {
-  color: var(--text);
-  background: #fff;
-}
-
-.his-slide__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  padding: 4px 8px 18px;
-  /* 面板里不画滚动条（照交易页其他区域的习惯），照样能滚 */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.his-slide__body::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-
-.his-slide__empty {
-  margin: 26px 0;
-  color: var(--text-hint);
-  font-size: 12.5px;
+  letter-spacing: 2px;
   text-align: center;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  cursor: pointer;
+  box-shadow: -2px 3px 12px rgba(36, 31, 22, 0.18);
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
-.his-slide__empty[hidden] {
+.review-tab:hover {
+  background: var(--accent);
+}
+
+.review-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 展开时同一条竖条还露在最右边：换亮一档的绿，表示「已经展开，再点收起」 */
+.review-tab.is-on {
+  background: var(--accent);
+  color: #FFFDF5;
+  box-shadow: -2px 3px 16px rgba(36, 31, 22, 0.26);
+}
+
+/* 只有交易练习这一轨有这条竖条（切到读书会 / 燃灯时藏起来） */
+body:not([data-pane="trade"]) .review-tab {
   display: none;
 }
 
-@media (max-width: 900px) {
-  .his-slide {
-    right: 0 !important;
-    width: 100%;
-    border-radius: 0;
+/* 手机「全屏看盘」时先让位：整块走势铺满，右上角是价格轴，别压在上面 */
+body.is-fs .review-tab {
+  display: none;
+}
+
+.review-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: var(--bg);
+  /* 收起：整块收到屏幕右边缘之外；展开：一路铺到左边缘 */
+  clip-path: inset(0 0 0 100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: clip-path 0.36s cubic-bezier(0.22, 0.7, 0.24, 1),
+    visibility 0s linear 0.36s;
+}
+
+.review-overlay.is-open {
+  clip-path: inset(0 0 0 0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: clip-path 0.36s cubic-bezier(0.22, 0.7, 0.24, 1),
+    visibility 0s linear 0s;
+}
+
+.review-overlay__frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-overlay,
+  .review-overlay.is-open {
+    transition: none;
   }
 }
 
@@ -2323,14 +2293,6 @@ body.is-fs {
 
 .tbl tbody tr:last-child td {
   border-bottom: 0;
-}
-
-.his-row {
-  cursor: pointer;
-}
-
-.his-row:hover td {
-  background: var(--tint-bg);
 }
 
 .tbl .num {
@@ -2992,6 +2954,12 @@ body.is-fs {
     display: none;
   }
 
+  /* 窄屏没有 TRADE 竖条，复盘条回到右上角，避免压住下方搜索栏 */
+  .review-tab {
+    top: 44px;
+    bottom: auto;
+  }
+
   .page-trade .nav {
     position: sticky;
   }
@@ -3050,17 +3018,9 @@ body.is-fs {
     width: 100%;
   }
 
-  /* 手机上右下角还有全屏按钮，历史按钮挪到它左边，别叠在一起 */
-  .hist-fab {
-    right: 46px;
-    bottom: 8px;
-    width: 34px;
-    height: 34px;
-  }
-
-  .hist-fab svg {
-    width: 16px;
-    height: 16px;
+  /* 右侧边缘上部竖着「交易复盘」，周期栏别钻到它下面（22px 刚好还是两行） */
+  .chart-head {
+    padding-right: 22px;
   }
 
   .page-trade .trade-foot__line {
@@ -3089,7 +3049,17 @@ body.is-fs {
 
   .chart-head {
     gap: 4px 8px;
-    padding: 6px 10px;
+    padding: 6px 22px 6px 10px;
+  }
+
+  /* 右上角那根「交易复盘」竖条：顶栏 40px，条再瘦一点 */
+  .review-tab {
+    top: 40px;
+    bottom: auto;
+    width: 22px;
+    padding: 8px 0;
+    font-size: 10.5px;
+    letter-spacing: 1.5px;
   }
 
   /* 窄屏周期多，直接换行，别让人猜右边还能滑 */

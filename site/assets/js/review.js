@@ -985,7 +985,15 @@
   if (lightbox) lightbox.addEventListener("click", closeLightbox);
 
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeLightbox();
+    if (e.key === "Escape") {
+      // 大图开着先关大图；否则交给交易练习页把复盘浮层收起来
+      if (lightbox && !lightbox.hidden) closeLightbox();
+      else if (window.parent && window.parent !== window) {
+        try {
+          window.parent.postMessage({ type: "review:close" }, window.location.origin);
+        } catch (err) {}
+      }
+    }
     if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === "s") {
       e.preventDefault();
       var r = selectedRecord();
@@ -1061,6 +1069,15 @@
     resizeTimer = window.setTimeout(function () {
       drawChart(selectedRecord());
     }, 120);
+  });
+
+  // 被交易练习页当整屏浮层打开时，它会在展开 / 收起时发消息过来：
+  // 展开 → 重新读一次账户（刚平完仓不用手动点刷新）；收起 → 先把没保存的复盘存下来。
+  window.addEventListener("message", function (e) {
+    if (e.origin !== window.location.origin || !e.data) return;
+    var type = e.data.type;
+    if (type === "review:refresh") refreshAll();
+    else if (type === "review:save" && dirty) saveReview();
   });
 
   // 启动

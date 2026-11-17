@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>乘法自选 · 临界点与比价关系 · {{SITE_NAME}}</title>
+<meta name="theme-color" content="#F4ECD9">
+<script>
+(function () {
+  document.documentElement.classList.add('stk-root');
+  if (window.self !== window.top) document.documentElement.classList.add('is-embedded');
+})();
+</script>
+<link rel="icon" type="image/png" href="{{REL}}assets/icon-round.png">
+<link rel="stylesheet" href="{{REL}}assets/site.css?v={{ASSET_VER}}">
+<link rel="stylesheet" href="{{REL}}assets/stocks.css?v={{ASSET_VER}}">
+</head>
+<body class="stk-page">
+<a class="skip-link" href="#stkMain">跳到正文</a>
+
+{{SITE_NAV}}
+
+<main class="stk-main" id="stkMain">
+  <div class="stk-layout">
+    <aside class="stk-side" aria-label="行业板块与周期">
+      <button id="stkSideExpand" class="stk-side-rail" type="button" aria-label="展开板块" title="展开板块">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        <span class="stk-rail-label">板块</span>
+      </button>
+
+      <div class="stk-tabs" role="tablist" aria-label="工具">
+        <button class="stk-tab is-on" type="button" role="tab" aria-selected="true" data-tab="pool">临界点</button>
+        <button class="stk-tab" type="button" role="tab" aria-selected="false" data-tab="board">比价关系</button>
+      </div>
+
+      <div class="stk-side-top">
+        <div class="stk-drop">
+          <button id="stkBoardPeriodBtn" class="stk-dropbtn" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span id="stkBoardPeriodLabel">板块 · 日线</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+          </button>
+          <div class="stk-dropmenu" id="stkBoardPeriodMenu" role="listbox" aria-label="板块周期" hidden>
+            <button type="button" data-value="60">1 小时</button>
+            <button type="button" data-value="d" class="is-on">日线</button>
+            <button type="button" data-value="w">周线</button>
+          </div>
+        </div>
+
+        <div class="stk-drop">
+          <button id="stkStockPeriodBtn" class="stk-dropbtn" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span id="stkStockPeriodLabel">个股 · 1 小时</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+          </button>
+          <div class="stk-dropmenu" id="stkStockPeriodMenu" role="listbox" aria-label="个股周期" hidden>
+            <button type="button" data-value="60" class="is-on">1 小时</button>
+            <button type="button" data-value="d">日线</button>
+            <button type="button" data-value="w">周线</button>
+          </div>
+        </div>
+
+        <button id="stkApiBtn" class="stk-api-btn" type="button" hidden>设置 API</button>
+      </div>
+
+      <div class="stk-filterrow">
+        <div class="stk-search">
+          <svg class="stk-searchico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="stkBoardFilter" class="stk-filterinput" type="search" name="stk-board-query" placeholder="板块名称 / 代码" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="筛选板块" data-lpignore="true" data-1p-ignore="true" data-form-type="other" readonly>
+        </div>
+        <button id="stkCalcBoard" class="stk-calcbtn" type="button" aria-label="计算该板块的偏离度">
+          <svg class="stk-ico-calc" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+          <svg class="stk-ico-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z"/></svg>
+          <span class="stk-calc-txt">计算</span>
+        </button>
+      </div>
+
+      <div class="stk-side-list" id="stkBoardWrap">
+        <table class="stk-table stk-table--side">
+          <thead>
+            <tr>
+              <th class="is-sortable" data-sort="name" scope="col">板块</th>
+              <th class="stk-mid" scope="col">
+                <div id="stkCalcProgress" class="stk-progress" role="progressbar" aria-label="计算进度" aria-valuemin="0" aria-valuemax="100" hidden>
+                  <span class="stk-progress__fill"></span>
+                </div>
+              </th>
+              <th class="is-sortable is-num" data-sort="dev" scope="col">偏离</th>
+            </tr>
+          </thead>
+          <tbody id="stkBoardBody"></tbody>
+        </table>
+        <div class="stk-empty" id="stkBoardEmpty" hidden>没有匹配的板块</div>
+      </div>
+
+      <div class="stk-side-foot">
+        <button id="stkSideCollapse" class="stk-side-collapse" type="button" aria-label="折叠板块" aria-expanded="true" title="折叠板块">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+          <span>收起</span>
+        </button>
+      </div>
+    </aside>
+
+    <div class="stk-right">
+      <section class="stk-view" id="stkPoolView" role="tabpanel" aria-label="临界点">
+        <div class="stk-table-wrap stk-table-wrap--tall" id="stkStockWrap">
+          <table class="stk-table">
+            <thead>
+              <tr>
+                <th class="is-sortable" data-sort="code" scope="col">代码</th>
+                <th class="is-sortable" data-sort="name" scope="col">股票名称</th>
+                <th class="is-sortable is-num" data-sort="price" scope="col">现价</th>
+                <th class="is-sortable is-num" data-sort="chg" scope="col">涨跌幅</th>
+                <th class="is-sortable is-num" data-sort="ma" scope="col">MA250</th>
+                <th class="is-sortable is-num" data-sort="dev" scope="col">偏离</th>
+                <th class="is-sortable is-num" data-sort="float_cap" scope="col">流通市值</th>
+              </tr>
+            </thead>
+            <tbody id="stkStockBody"></tbody>
+          </table>
+          <div class="stk-empty" id="stkStockEmpty">点左侧板块查看个股偏离度</div>
+        </div>
+      </section>
+
+      <section class="stk-view" id="stkBoardView" role="tabpanel" aria-label="比价关系" hidden>
+        <div class="stk-table-wrap stk-table-wrap--tall" id="stkCompareWrap">
+          <table class="stk-table stk-table--wide">
+            <thead>
+              <tr>
+                <th class="is-sortable" data-sort="name" scope="col">股票名称</th>
+                <th class="is-sortable" data-sort="code" scope="col">代码</th>
+                <th class="is-sortable is-num" data-sort="float_cap" scope="col">流通市值</th>
+                <th class="is-sortable is-num" data-sort="roe" scope="col">ROE</th>
+                <th class="is-sortable is-num" data-sort="net_margin" scope="col">净利率</th>
+                <th class="is-sortable is-num" data-sort="asset_turnover" scope="col">总资产周转率</th>
+                <th class="is-sortable is-num" data-sort="equity_multiplier" scope="col">权益乘数</th>
+                <th class="is-sortable is-num" data-sort="ocf" scope="col">经营现金流</th>
+                <th class="is-sortable is-num" data-sort="liability" scope="col">总负债</th>
+                <th class="is-sortable is-num" data-sort="debt_coverage" scope="col">保障率</th>
+                <th class="is-sortable is-num" data-sort="dividend_yield" scope="col">股息率</th>
+                <th class="is-sortable is-num" data-sort="pe" scope="col">市盈率(动)</th>
+                <th class="is-sortable is-num" data-sort="pe_static" scope="col">市盈率(静)</th>
+              </tr>
+            </thead>
+            <tbody id="stkCompareBody"></tbody>
+          </table>
+          <div class="stk-empty" id="stkCompareEmpty">点左侧板块查看当前数据</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="stk-foot">
+    <p class="stk-beian">{{BEIAN_HTML}}</p>
+  </footer>
+</main>
+
+<!-- ======================== API Key 设置 ======================== -->
+<div id="stkKeyModal" class="stk-modal" role="dialog" aria-modal="true" aria-labelledby="stkKeyTitle" hidden>
+  <div class="stk-modal__card">
+    <div class="stk-modal__head">
+      <h2 id="stkKeyTitle">同花顺 API Key</h2>
+      <button id="stkKeyClose" class="stk-iconbtn" type="button" aria-label="关闭">✕</button>
+    </div>
+    <div class="stk-modal__body">
+      <p class="stk-note">
+        Key 只保存在<strong>你自己的浏览器</strong>，每次请求由浏览器直接发给同花顺数据服务
+        <code>fuyao.aicubes.cn</code>，不经过 aibuilder.top 的服务器，也不会与其他访问者共用。
+      </p>
+      <label class="stk-field__label" for="stkKeyInput">API Key</label>
+      <div class="stk-keyrow">
+        <input id="stkKeyInput" class="stk-input" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <button id="stkKeyToggle" class="stk-btn stk-btn--ghost stk-btn--sm" type="button">显示</button>
+      </div>
+      <div class="stk-keyhelp">
+        <span>免费申请：</span>
+        <a href="https://fuyao.aicubes.cn/admin/" target="_blank" rel="noopener noreferrer">fuyao.aicubes.cn ↗</a>
+      </div>
+      <div id="stkKeyResult" class="stk-testresult" role="status"></div>
+    </div>
+    <div class="stk-modal__actions">
+      <button id="stkKeyClear" class="stk-btn stk-btn--ghost stk-btn--danger-text" type="button">清除</button>
+      <button id="stkKeyTest" class="stk-btn stk-btn--ghost" type="button">测试连接</button>
+      <button id="stkKeySave" class="stk-btn stk-btn--primary" type="button">保存并使用</button>
+    </div>
+  </div>
+</div>
+
+<div id="stkToast" class="stk-toast" role="status" aria-live="polite" hidden></div>
+
+<div id="stkDetailModal" class="stk-detail" role="dialog" aria-modal="true" aria-labelledby="stkDetailTitle" hidden>
+  <div class="stk-detail__card">
+    <div class="stk-detail__head">
+      <div class="stk-detail__titles">
+        <h2 id="stkDetailTitle">个股走势</h2>
+        <p id="stkDetailSub" class="stk-detail__sub">1 小时 · 不复权</p>
+      </div>
+      <button id="stkDetailClose" class="stk-iconbtn" type="button" aria-label="关闭">✕</button>
+    </div>
+
+    <div class="stk-detail__periods" id="stkDetailPeriods" role="group" aria-label="走势图周期">
+      <button type="button" data-period="60" class="is-on">1 小时</button>
+      <button type="button" data-period="d">日线</button>
+      <button type="button" data-period="w">周线</button>
+      <span class="stk-detail__hint">不复权</span>
+    </div>
+
+    <div class="stk-detail__chartwrap">
+      <canvas id="stkDetailChart"></canvas>
+      <div id="stkDetailChartState" class="stk-detail__state">加载中…</div>
+    </div>
+
+    <section id="stkDetailFinWrap" class="stk-detail__fin" aria-label="最近5年比价关系数据">
+      <div class="stk-detail__finhead">
+        <h3>最近 5 年年报 · 比价关系指标</h3>
+        <span>东方财富 · 单位见表格</span>
+      </div>
+      <div id="stkDetailFin" class="stk-detail__finbody">加载中…</div>
+    </section>
+  </div>
+</div>
+
+<div id="stkCompareMenu" class="stk-ctxmenu" role="menu" hidden>
+  <div id="stkCompareMenuTitle" class="stk-ctxmenu__title"></div>
+  <button id="stkComparePin" type="button" role="menuitem" data-act="pin">置顶</button>
+  <button id="stkCompareUnpin" type="button" role="menuitem" data-act="unpin">取消置顶</button>
+  <button id="stkCompareBottom" type="button" role="menuitem" data-act="bottom">移到底部</button>
+  <button id="stkCompareRestore" type="button" role="menuitem" data-act="restore">移回上方</button>
+</div>
+
+<script src="{{REL}}assets/js/stocks.js?v={{ASSET_VER}}" defer></script>
+</body>
+</html>
