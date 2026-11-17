@@ -1,0 +1,18 @@
+{
+  "folders": [
+    { "name": "site（网页源码）", "path": "site" },
+    { "name": "cloudfunctions（云函数，与 App 共用）", "path": "cloudfunctions" },
+    { "name": "tools（构建 / 部署脚本）", "path": "tools" },
+    { "name": "docs（网页文档）", "path": "docs" }
+  ],
+  "settings": {
+    "files.exclude": {
+      "site/dist": false,
+      "tools/__pycache__": true
+    },
+    "search.followSymlinks": false,
+    "files.watcherExclude": {
+      "**/site/dist/**": true
+    }
+  }
+}

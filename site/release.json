@@ -1,0 +1,8 @@
+{
+  "version": "3.5.3",
+  "versionCode": 39,
+  "releaseDate": "2026-11-17",
+  "apkFilename": "huideng.apk",
+  "notes": "",
+  "_note": "官网发布版本信息。发版时由 tools/update_site.py --apk <包> --version x.y.z+NN 自动改写；单独改网页内容跑 build_site.py 即可。"
+}
