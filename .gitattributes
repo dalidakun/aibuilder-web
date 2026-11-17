@@ -1,0 +1,15 @@
+# 统一换行：站点文件按 LF 检出，保证构建产物（包括 css/js 的 ?v= 内容指纹）可复现。
+# 没有这条时，Windows 上 core.autocrlf=true 会把 css/js 检出成 CRLF，
+# 同一份源码构建出的页面指纹和部署产物就跟 LF 环境不一样。
+* text=auto eol=lf
+
+# Windows 批处理必须是 CRLF
+*.bat text eol=crlf
+
+# 二进制
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.apk binary
