@@ -4,6 +4,7 @@
 本仓库只放官网相关代码，不包含 Flutter App 源码，构建时也不再读 App 的文件。
 
 - 线上地址：<https://aibuilder.top/>
+- GitHub：<https://github.com/dalidakun/aibuilder-web>
 - CloudBase 环境：`randeng-d8gs968w22a3d98e8`
 - 部署位置：静态托管根目录（官网）+ `/huideng` 子目录（App 更新检查与下载页）
 
