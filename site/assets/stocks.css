@@ -337,19 +337,28 @@ html.stk-root body::-webkit-scrollbar {
   padding: 0 10px 0 30px;
   border: 0;
   border-radius: 999px;
-  background: var(--bg);
+  background: #F6EFDF;
   color: var(--text);
   font: inherit;
   font-size: 12.5px;
+  line-height: 30px;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   outline: none;
+  cursor: text;
+  caret-color: var(--accent-deep);
 }
 
-.stk-filterinput::placeholder {
+.stk-filterinput::-webkit-scrollbar {
+  display: none;
+}
+
+.stk-filterinput:empty::before {
+  content: attr(data-placeholder);
   color: var(--text-hint);
-}
-
-.stk-filterinput::-webkit-search-cancel-button {
-  -webkit-appearance: none;
+  pointer-events: none;
 }
 
 .stk-filterinput:focus {
@@ -603,8 +612,38 @@ html.stk-root body::-webkit-scrollbar {
 .stk-mid {
   width: 64px;
   padding-left: 6px !important;
-  padding-right: 6px !important;
-  text-align: center;
+  padding-right: 0 !important;
+  text-align: right;
+}
+
+.stk-table th.stk-mid {
+  text-align: right;
+}
+
+.stk-devhead-th {
+  padding-left: 2px !important;
+}
+
+.stk-devhead {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  width: 100%;
+}
+
+.stk-headlabel {
+  white-space: nowrap;
+}
+
+.stk-devhead .stk-refresh {
+  width: 20px;
+  height: 20px;
+}
+
+.stk-devhead .stk-refresh svg {
+  width: 14px;
+  height: 14px;
 }
 
 .stk-progress {

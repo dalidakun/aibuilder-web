@@ -48,6 +48,7 @@
     tab: 'pool',
     catalog: [],
     catalogLoading: false,
+    initialMap: {},
     boardPeriod: 'd',
     stockPeriod: '60',
     devs: {},
@@ -221,6 +222,19 @@
 
   function markSort(selector, col, desc) {
     $$(selector).forEach(function (th) {
+      var labelEl = th.querySelector('.stk-headlabel');
+      if (labelEl) {
+        var text = th.dataset.label || labelEl.textContent.replace(/[↑↓]\s*$/, '').trim();
+        th.dataset.label = text;
+        labelEl.textContent = text;
+        if (th.dataset.sort === col) {
+          var labelArrow = document.createElement('span');
+          labelArrow.className = 'stk-arrow';
+          labelArrow.textContent = desc ? '↓' : '↑';
+          labelEl.appendChild(labelArrow);
+        }
+        return;
+      }
       var base = th.dataset.label || th.textContent.replace(/[↑↓]\s*$/, '').trim();
       th.dataset.label = base;
       th.textContent = base;
@@ -415,7 +429,10 @@
   /* ------------------------------------------------------------------ */
 
   async function fetchStaticCatalog() {
-    var url = new URL('../assets/data/stock-boards.json', location.href).toString();
+    var link = document.querySelector('link[href*="site.css"]');
+    var ver = link && (link.getAttribute('href') || '').match(/[?&]v=([^&]+)/);
+    var url = new URL('../assets/data/stock-boards.json' +
+      (ver ? '?v=' + encodeURIComponent(ver[1]) : ''), location.href).toString();
     var j = await fetchJson(url, { timeout: 15000 });
     return (Array.isArray(j.boards) ? j.boards : []).filter(function (b) {
       return b && b.tag === '行业';
@@ -435,6 +452,9 @@
 
   function applyCatalog(boards) {
     if (!Array.isArray(boards) || !boards.length) return;
+    boards.forEach(function (b) {
+      b.initials = String(b.initials || state.initialMap[b.code] || '').toLowerCase();
+    });
     state.catalog = boards;
     if (state.selected && !boards.some(function (b) { return b.code === state.selected.code; })) {
       state.selected = null;
@@ -446,14 +466,23 @@
     if (state.catalogLoading) return;
     state.catalogLoading = true;
     var cached = readLS(LS.catalog, null);
+    var staticBoards = [];
     try {
+      staticBoards = await fetchStaticCatalog();
+    } catch (e) {
+      if (!cached && !state.catalog.length) toast('板块目录加载失败：' + e.message, 'err');
+    }
+    state.initialMap = {};
+    staticBoards.forEach(function (b) {
+      if (b && b.code) state.initialMap[b.code] = String(b.initials || '').toLowerCase();
+    });
+    try {
+      var boards = [];
       if (cached && Array.isArray(cached.boards) && cached.boards.length) {
-        applyCatalog(cached.boards.filter(function (b) { return b.tag === '行业'; }));
+        boards = cached.boards.filter(function (b) { return b.tag === '行业'; });
       }
-      if (!state.catalog.length) {
-        var staticBoards = await fetchStaticCatalog();
-        if (staticBoards.length) applyCatalog(staticBoards);
-      }
+      if (!boards.length) boards = staticBoards;
+      if (boards.length) applyCatalog(boards);
     } catch (e) {
       if (!state.catalog.length) toast('板块目录加载失败：' + e.message, 'err');
     }
@@ -478,10 +507,19 @@
     var text = String(q || '').trim();
     if (!text) return null;
     var lower = text.toLowerCase();
+    var compact = lower.replace(/\s+/g, '');
+    function byInitials(match) {
+      return state.catalog.find(function (b) {
+        return match(String(b.initials || ''));
+      });
+    }
     return state.catalog.find(function (b) { return String(b.code).toLowerCase() === lower; }) ||
       state.catalog.find(function (b) { return String(b.name).toLowerCase() === lower; }) ||
+      (compact && byInitials(function (s) { return s === compact; })) ||
       state.catalog.find(function (b) { return String(b.name).toLowerCase().indexOf(lower) >= 0; }) ||
+      (compact && byInitials(function (s) { return s.indexOf(compact) === 0; })) ||
       state.catalog.find(function (b) { return String(b.code).indexOf(lower) >= 0; }) ||
+      (compact && byInitials(function (s) { return s.indexOf(compact) >= 0; })) ||
       null;
   }
 
@@ -520,13 +558,15 @@
 
   function sideRows() {
     var filter = state.filter.trim().toLowerCase();
+    var compact = filter.replace(/\s+/g, '');
     var rows = state.catalog.map(function (b) {
       var d = state.devs[b.code];
-      return { code: b.code, name: b.name, dev: d ? d.dev : null, row: d || null };
+      return { code: b.code, name: b.name, initials: b.initials || '', dev: d ? d.dev : null, row: d || null };
     }).filter(function (r) {
       if (!filter) return true;
       return String(r.name || '').toLowerCase().indexOf(filter) >= 0 ||
-        String(r.code || '').toLowerCase().indexOf(filter) >= 0;
+        String(r.code || '').toLowerCase().indexOf(filter) >= 0 ||
+        (!!compact && String(r.initials || '').indexOf(compact) >= 0);
     });
 
     var sort = state.sort;
@@ -884,12 +924,12 @@
       return;
     }
     var input = $('stkBoardFilter');
-    if (!state.userTyped && input.value) {
-      input.value = '';
+    if (!state.userTyped && input.textContent.trim()) {
+      input.textContent = '';
       state.filter = '';
       renderSide();
     }
-    var q = input.value.trim();
+    var q = input.textContent.trim();
     if (!q) {
       await calcAllBoards();
       return;
@@ -2378,12 +2418,15 @@
       }
     });
 
-    /* 搜索框：直接可输入；只在检测到自动填充时清空，避免浏览器填用户名 */
+    /* 搜索框：contenteditable，不会被浏览器/密码管理器当成用户名输入框自动填充 */
     var filterInput = $('stkBoardFilter');
+    if (filterInput.contentEditable !== 'plaintext-only') {
+      filterInput.setAttribute('contenteditable', 'true');
+    }
     function clearFilterIfUntyped() {
       if (state.userTyped) return;
-      if (filterInput.value) {
-        filterInput.value = '';
+      if (filterInput.textContent) {
+        filterInput.innerHTML = '';
         state.filter = '';
         renderSide();
       }
@@ -2402,22 +2445,47 @@
         state.userTyped = true;
       }
     });
-    filterInput.addEventListener('paste', function () { state.userTyped = true; });
+    filterInput.addEventListener('paste', function (e) {
+      e.preventDefault();
+      state.userTyped = true;
+      var text = (e.clipboardData || window.clipboardData).getData('text') || '';
+      text = text.replace(/[\r\n\t]+/g, ' ').trim();
+      if (text) {
+        var ok = false;
+        try { ok = document.execCommand('insertText', false, text); } catch (err) {}
+        if (!ok) {
+          var sel = window.getSelection();
+          if (sel && sel.rangeCount) {
+            var range = sel.getRangeAt(0);
+            range.deleteContents();
+            var node = document.createTextNode(text);
+            range.insertNode(node);
+            range.setStartAfter(node);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }
+        state.filter = filterInput.textContent || '';
+        renderSide();
+      }
+    });
     filterInput.addEventListener('compositionstart', function () { state.userTyped = true; });
     filterInput.addEventListener('blur', clearFilterIfUntyped);
     filterInput.addEventListener('input', function (e) {
       var it = e.inputType || '';
       var typing = it === 'insertText' || it === 'insertCompositionText' ||
         it === 'deleteContentBackward' || it === 'deleteContentForward';
-      // 没有真实键盘/粘贴输入却出现了值，基本就是浏览器/密码管理器自动填的用户名
+      var text = e.target.textContent || '';
       if (!state.userTyped && !typing) {
-        e.target.value = '';
+        e.target.innerHTML = '';
         state.filter = '';
         renderSide();
         return;
       }
       if (typing) state.userTyped = true;
-      state.filter = e.target.value;
+      if (!text) e.target.innerHTML = '';
+      state.filter = text;
       renderSide();
     });
     filterInput.addEventListener('keydown', function (e) {
@@ -2435,7 +2503,10 @@
     setTimeout(clearFilterIfUntyped, 500);
     setTimeout(clearFilterIfUntyped, 1500);
     $('stkCalcBoard').addEventListener('click', onCalcClick);
-    $('stkRefreshStocks').addEventListener('click', refreshSelectedStocks);
+    $('stkRefreshStocks').addEventListener('click', function (e) {
+      e.stopPropagation();
+      refreshSelectedStocks();
+    });
 
     $('stkBoardBody').addEventListener('click', function (e) {
       var tr = e.target.closest('tr');
