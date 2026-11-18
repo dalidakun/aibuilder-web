@@ -571,6 +571,8 @@
       btn.classList.toggle('is-busy', !!on);
       btn.setAttribute('aria-label', on ? '停止计算' : '计算该板块的偏离度');
     }
+    var refresh = $('stkRefreshStocks');
+    if (refresh) refresh.hidden = !!on;
     var bar = $('stkCalcProgress');
     if (bar) {
       bar.hidden = !on;
@@ -1149,7 +1151,7 @@
       handleApiError(e);
       state.pool.loading = false;
       setWrapLoading('stkStockWrap', false);
-      setEmpty('stkStockEmpty', true, '加载失败');
+      setEmpty('stkStockEmpty', true, '加载失败，点板块 / 偏离中间的刷新按钮重试');
       toast(e.message, 'err');
     }
   }
@@ -1971,22 +1973,25 @@
     toast('已移回上方');
   }
 
-  async function loadCompare(code, name) {
+  async function loadCompare(code, name, force) {
     if (!requireKey()) return;
     closeCompareMenu();
     var token = ++state.compare.token;
-    if (state.compare.code !== code) state.stockSel.compare = '';
+    var sameCode = state.compare.code === code;
+    if (!sameCode) {
+      state.stockSel.compare = '';
+      state.compare.sort = { col: null, desc: false };
+    }
     state.compare.code = code;
     state.compare.rows = [];
     state.compare.ts = 0;
     state.compare.loading = true;
-    state.compare.sort = { col: null, desc: false };
     $('stkCompareBody').innerHTML = '';
     setEmpty('stkCompareEmpty', true, '加载中…');
     setWrapLoading('stkCompareWrap', true);
 
     var cached = readCompareCache(code);
-    if (cached && Date.now() - cached.ts <= BOARD_TTL) {
+    if (cached && !force && Date.now() - cached.ts <= BOARD_TTL) {
       state.compare.rows = cached.rows;
       state.compare.ts = cached.ts;
       state.compare.loading = false;
@@ -2051,8 +2056,43 @@
       handleApiError(e);
       state.compare.loading = false;
       setWrapLoading('stkCompareWrap', false);
-      setEmpty('stkCompareEmpty', true, '加载失败');
+      setEmpty('stkCompareEmpty', true, '加载失败，点板块 / 偏离中间的刷新按钮重试');
       toast(e.message, 'err');
+    }
+  }
+
+  async function refreshSelectedStocks() {
+    if (state.busy) {
+      toast('计算中，请稍候');
+      return;
+    }
+    if (!state.selected) {
+      toast('请先选择一个板块');
+      return;
+    }
+    var loading = state.tab === 'pool' ? state.pool.loading : state.compare.loading;
+    if (loading) {
+      toast('正在加载数据，请稍候');
+      return;
+    }
+    if (!requireKey()) return;
+
+    var btn = $('stkRefreshStocks');
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-spinning');
+    }
+    var code = state.selected.code;
+    var name = state.selected.name;
+    try {
+      if (!state.devs[code]) await ensureDev(code, name);
+      if (state.tab === 'pool') await loadPoolStocks(code, name, true);
+      else await loadCompare(code, name, true);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-spinning');
+      }
     }
   }
 
@@ -2082,10 +2122,12 @@
 
     if (!state.selected) return;
     if (tab === 'pool') {
-      if (state.pool.code !== state.selected.code || state.pool.period !== state.stockPeriod) {
+      if (state.pool.code !== state.selected.code || state.pool.period !== state.stockPeriod ||
+          (!state.pool.rows.length && !state.pool.loading)) {
         loadPoolStocks(state.selected.code, state.selected.name);
       }
-    } else if (state.compare.code !== state.selected.code) {
+    } else if (state.compare.code !== state.selected.code ||
+               (!state.compare.rows.length && !state.compare.loading)) {
       loadCompare(state.selected.code, state.selected.name);
     }
   }
@@ -2336,11 +2378,8 @@
       }
     });
 
-    /* 搜索框：readonly 防止浏览器/密码管理器自动填用户名；聚焦后再解锁 */
+    /* 搜索框：直接可输入；只在检测到自动填充时清空，避免浏览器填用户名 */
     var filterInput = $('stkBoardFilter');
-    function unlockFilter() {
-      if (filterInput.readOnly) filterInput.readOnly = false;
-    }
     function clearFilterIfUntyped() {
       if (state.userTyped) return;
       if (filterInput.value) {
@@ -2349,25 +2388,35 @@
         renderSide();
       }
     }
-    filterInput.addEventListener('pointerdown', unlockFilter);
-    filterInput.addEventListener('focus', unlockFilter);
+    function markUserTyping(e) {
+      var it = (e && e.inputType) || '';
+      if (it === 'insertText' || it === 'insertCompositionText' ||
+          it === 'deleteContentBackward' || it === 'deleteContentForward') {
+        state.userTyped = true;
+      }
+    }
+    filterInput.addEventListener('beforeinput', markUserTyping);
+    filterInput.addEventListener('focus', clearFilterIfUntyped);
     filterInput.addEventListener('keydown', function (e) {
       if ((e.key && e.key.length === 1) || e.key === 'Backspace' || e.key === 'Delete') {
         state.userTyped = true;
       }
-      unlockFilter();
     });
     filterInput.addEventListener('paste', function () { state.userTyped = true; });
     filterInput.addEventListener('compositionstart', function () { state.userTyped = true; });
     filterInput.addEventListener('blur', clearFilterIfUntyped);
     filterInput.addEventListener('input', function (e) {
+      var it = e.inputType || '';
+      var typing = it === 'insertText' || it === 'insertCompositionText' ||
+        it === 'deleteContentBackward' || it === 'deleteContentForward';
       // 没有真实键盘/粘贴输入却出现了值，基本就是浏览器/密码管理器自动填的用户名
-      if (!state.userTyped) {
+      if (!state.userTyped && !typing) {
         e.target.value = '';
         state.filter = '';
         renderSide();
         return;
       }
+      if (typing) state.userTyped = true;
       state.filter = e.target.value;
       renderSide();
     });
@@ -2386,6 +2435,7 @@
     setTimeout(clearFilterIfUntyped, 500);
     setTimeout(clearFilterIfUntyped, 1500);
     $('stkCalcBoard').addEventListener('click', onCalcClick);
+    $('stkRefreshStocks').addEventListener('click', refreshSelectedStocks);
 
     $('stkBoardBody').addEventListener('click', function (e) {
       var tr = e.target.closest('tr');
@@ -2549,6 +2599,7 @@
     state.sideCollapsed = !!readLS(LS.sideCollapsed, false);
     syncPeriodLabels();
     syncStockPeriodAvailability();
+    if (window.__stkFilterTyped) state.userTyped = true;
     bindEvents();
     setSideCollapsed(state.sideCollapsed, false);
     renderApiBtn();

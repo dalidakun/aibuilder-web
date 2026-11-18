@@ -618,6 +618,45 @@ html.stk-root body::-webkit-scrollbar {
   background: rgba(48, 92, 56, 0.14);
 }
 
+.stk-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-hint);
+  cursor: pointer;
+}
+
+.stk-refresh:hover {
+  background: var(--tint-bg);
+  color: var(--accent-deep);
+}
+
+.stk-refresh:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.stk-refresh svg {
+  width: 15px;
+  height: 15px;
+}
+
+.stk-refresh.is-spinning svg {
+  animation: stk-refresh-spin 0.9s linear infinite;
+}
+
+@keyframes stk-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .stk-progress__fill {
   display: block;
   width: 0;
