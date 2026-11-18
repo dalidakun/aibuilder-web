@@ -7181,7 +7181,7 @@
     }
     if (item.key === 'chan') frame.addEventListener('load', function () { hideEmbedChrome(frame); });
     var url = item.url;
-    if (item.key === 'stocks') {
+    if (item.key === 'stocks' || item.key === 'chan') {
       var ver = assetVer();
       if (ver) url += (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + encodeURIComponent(ver);
     }

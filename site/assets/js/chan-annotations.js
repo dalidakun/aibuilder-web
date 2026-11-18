@@ -1276,8 +1276,8 @@
         closeCompose();
         clearSelection();
         renderAnnotations(lessonNo);
-        var pi = annoHost[item.id];
-        if (pi !== undefined) openPop(pi, item.id);
+        // 发布后只保留正文画线和段落入口，不自动展开「本段注释」汇总浮层
+        closePop();
         toast("注释已发布");
         locate(item.id);
       })
