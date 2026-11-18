@@ -139,7 +139,12 @@ def deploy() -> tuple[int, str]:
         label = f"/{target}" if target else "/（根目录）"
         print(f"[部署]   tcb hosting deploy {DIST.relative_to(ROOT)} {target} -e {env_id}")
         sys.stdout.flush()
-        proc = subprocess.run(args, cwd=str(ROOT))
+        # 从 GUI（pythonw，无控制台）调用时避免 tcb 弹出黑色控制台窗口；
+        # 在终端里运行时输出仍走当前控制台，不受影响。
+        run_kwargs = {}
+        if sys.platform == "win32":
+            run_kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+        proc = subprocess.run(args, cwd=str(ROOT), **run_kwargs)
         if proc.returncode != 0:
             print()
             print(f"[部署]   {label} 上传失败。常见原因：")

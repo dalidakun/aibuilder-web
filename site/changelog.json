@@ -2,6 +2,18 @@
   "_note": "更新日志数据源。build_site.py --notes 会把新版本插到最前面，并重新生成 changelog.html。",
   "releases": [
     {
+      "version": "3.5.6",
+      "versionCode": 42,
+      "date": "2026-11-18",
+      "notes": "账号与官网互通：同一账号密码可在 App 与 aibuilder.top 登录；支持邮箱登录与邮箱找回密码（两端通用）"
+    },
+    {
+      "version": "3.5.5",
+      "versionCode": 41,
+      "date": "2026-11-18",
+      "notes": "移除手机号注册；新增账号密码注册、邮箱注册（账号自动生成）与邮箱找回密码"
+    },
+    {
       "version": "1.4.0",
       "versionCode": 12,
       "date": "2026-10-01",

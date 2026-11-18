@@ -1,8 +1,10 @@
 {
-  "version": "3.5.3",
-  "versionCode": 39,
-  "releaseDate": "2026-11-17",
+  "version": "3.5.6",
+  "versionCode": 42,
+  "releaseDate": "2026-11-18",
   "apkFilename": "huideng.apk",
-  "notes": "",
-  "_note": "官网发布版本信息。发版时由 tools/update_site.py --apk <包> --version x.y.z+NN 自动改写；单独改网页内容跑 build_site.py 即可。"
+  "apkSize": 35184216,
+  "sha256": "82884bbaa94428cb04b6d317525a65815bf625cdfe9da4891aa5921a6e077674",
+  "notes": "账号与官网互通：同一账号密码可在 App 与 aibuilder.top 登录；支持邮箱登录与邮箱找回密码（两端通用）",
+  "_note": "官网发布版本信息。由 tools/update_site.py 写入；单独改页面内容不需要动它。"
 }

@@ -596,6 +596,9 @@ exports.main = async (event, context) => {
   const follows = db.collection("userFollows");
   const blocks = db.collection("userBlocks");
   const userAccounts = db.collection("userAccounts");
+  // 网页端（模拟交易）维护的「邮箱 → uid」映射，App 注册/绑定邮箱时同步写入，
+  // 保证两边看到同一份邮箱归属，不会出现同一邮箱绑到两个账号。
+  const tradeEmails = db.collection("tradeEmails");
   const feedbacks = db.collection("feedbacks");
   const admins = db.collection("admins");
   const verifications = db.collection("userVerifications");
@@ -1178,6 +1181,89 @@ exports.main = async (event, context) => {
     } catch (e) {
       // 已存在或其它错误均忽略，后续真实操作会再报出明确错误。
     }
+  }
+
+  // 确保 tradeEmails 集合存在（App 注册/绑定邮箱时会写入，网页端也读它）。
+  let tradeEmailsEnsured = false;
+  async function ensureTradeEmails() {
+    if (tradeEmailsEnsured) return;
+    try {
+      await db.createCollection("tradeEmails");
+    } catch (e) {
+      // 已存在或其它错误均忽略。
+    }
+    tradeEmailsEnsured = true;
+  }
+
+  // 邮箱 → 账号（App / 网页共用一份归属）：
+  //  1. App 新账号：userAccounts.emailKey
+  //  2. 网页老账号：userAccounts.email（早期只写了 email）
+  //  3. 网页邮箱映射：tradeEmails（_id 为小写邮箱）
+  async function findAccountByEmailAny(rawEmail) {
+    const email = normalizeEmail(rawEmail);
+    if (!email) return null;
+    try {
+      const { data } = await userAccounts
+        .where({ emailKey: email })
+        .limit(1)
+        .get();
+      if (data && data[0]) return data[0];
+    } catch (e) {}
+    try {
+      const { data } = await userAccounts.where({ email }).limit(1).get();
+      if (data && data[0]) return data[0];
+    } catch (e) {}
+    try {
+      const { data } = await tradeEmails.doc(email).get();
+      const owner = data && data[0];
+      if (owner && owner.uid) {
+        const { data: rows } = await userAccounts
+          .where({ uid: owner.uid })
+          .limit(1)
+          .get();
+        if (rows && rows[0]) return rows[0];
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  // 把邮箱写到账号上，并同步网页端的 tradeEmails 映射。
+  // 换绑时清掉旧邮箱映射（仅当旧映射属于这个 uid，避免误删别人的）。
+  async function bindAccountEmail(acc, rawEmail) {
+    const email = normalizeEmail(rawEmail);
+    if (!acc || !acc.uid || !email) return;
+    await ensureTradeEmails();
+    // 邮箱已经属于另一个真实账号时不做任何覆盖（避免把别人的找回入口抢过来）。
+    // 映射指向的账号已不存在（历史脏数据）则允许重绑。
+    const existing = await findAccountByEmailAny(email);
+    if (existing && existing.uid && existing.uid !== acc.uid) return;
+    const ts = now();
+    const oldEmail = normalizeEmail(acc.email);
+    if (oldEmail && oldEmail !== email) {
+      try {
+        const { data } = await tradeEmails.doc(oldEmail).get();
+        const owner = data && data[0];
+        if (owner && owner.uid === acc.uid) {
+          await tradeEmails.doc(oldEmail).remove();
+        }
+      } catch (e) {}
+    }
+    try {
+      await tradeEmails.doc(email).set({ uid: acc.uid, email, createdAt: ts });
+    } catch (e) {
+      console.log(
+        "[api] bindAccountEmail tradeEmails failed:",
+        e && e.message ? e.message : e
+      );
+    }
+    try {
+      await userAccounts.doc(acc._id).update({
+        email,
+        emailKey: email,
+        emailVerifiedAt: ts,
+        updatedAt: ts,
+      });
+    } catch (e) {}
   }
 
   // 确保 admins 集合存在。
@@ -4796,64 +4882,207 @@ exports.main = async (event, context) => {
         return ok({ username });
       }
 
-      // 手机号登录后自动生成默认账号（随机数字+尾号，并随机生成密码）：
-      // 已有账号则原样返回，不覆盖；没有则创建一条已设随机密码的记录。
-      case "ensureDefaultAccount": {
-        if (!uid) return fail("unauthorized");
+      // 账号 + 密码注册（邮箱已验证）：
+      //  - 新建一个独立的 CloudBase 自定义登录用户（uid 由服务端生成）；
+      //  - event.autoUsername=true 时账号由服务端自动生成（邮箱注册方式），否则用
+      //    用户填写的账号名；
+      //  - 邮箱写入 userAccounts，用于「忘记密码」与管理员按邮箱核对开通订阅。
+      // 成功后直接签发登录票据，客户端拿票据建立会话即为已登录。
+      case "registerWithAccount": {
         await ensureUserAccounts();
-        const username = normalizeUsername(event.username);
-        if (!username) return fail("invalid_username");
         const password = String(event.password || "");
-        const mine = await userAccounts.where({ uid }).get();
-        const myDocs = mine.data || [];
-        if (myDocs.length > 0) {
-          for (const d of myDocs.slice(1)) {
-            await userAccounts.doc(d._id).remove();
+        if (password.length < 6 || password.length > 64) {
+          return fail("invalid_password");
+        }
+        const email = normalizeEmail(event.email);
+        if (!email) return fail("invalid_email");
+
+        const verified = await verifyEmailCode(
+          event.verificationId,
+          event.code,
+          event.__accessToken
+        );
+        if (verified.error) return fail(verified.error);
+        if (verified.email !== email) return fail("email_mismatch");
+
+        // 一个邮箱只能注册一个账号（可用于找回密码，避免找回时串号）。
+        // 网页端可能已经用这个邮箱注册/绑定过，必须一起检查。
+        if (await findAccountByEmailAny(email)) return fail("email_taken");
+
+        const auto = event.autoUsername === true;
+        let username = "";
+        if (auto) {
+          // 邮箱前缀（去掉不合法字符）+ 4 位随机数字，冲突则重试。
+          const local = String(email.split("@")[0] || "")
+            .replace(/[^a-zA-Z0-9]/g, "")
+            .slice(0, 8)
+            .toLowerCase();
+          for (let i = 0; i < 8 && !username; i++) {
+            const cand =
+              (local || "u") + String(Math.floor(1000 + Math.random() * 9000));
+            if (cand.length < 2 || cand.length > 20) continue;
+            if (!/^[\u4e00-\u9fa5a-zA-Z0-9_]{2,20}$/.test(cand)) continue;
+            try {
+              const { data } = await userAccounts
+                .where({ usernameKey: cand.toLowerCase() })
+                .limit(1)
+                .get();
+              if (data && data.length) continue;
+            } catch (e) {
+              continue;
+            }
+            username = cand;
           }
-          return ok({ username: myDocs[0].username || "" });
+          if (!username) return fail("username_taken");
+        } else {
+          username = normalizeUsername(event.username);
+          if (!username) return fail("invalid_username");
+          try {
+            const { data } = await userAccounts
+              .where({ usernameKey: username.toLowerCase() })
+              .limit(1)
+              .get();
+            if (data && data.length) return fail("username_taken");
+          } catch (e) {}
         }
-        const usernameKey = username.toLowerCase();
-        const { data } = await userAccounts
-          .where({ usernameKey })
-          .limit(1)
-          .get();
-        const taken = data && data[0];
-        if (taken && taken.uid !== uid) return fail("username_taken");
-        let salt = "";
-        let passwordHash = "";
-        let hasPassword = false;
-        if (password.length >= 6 && password.length <= 64) {
-          salt = crypto.randomBytes(16).toString("hex");
-          passwordHash = hashPassword(password, salt);
-          hasPassword = true;
-        }
-        await userAccounts.add({
+
+        // uid 必须过得了 createTicket 的校验（4-32 位、限定字符），固定 31 位。
+        const newUid = "u" + crypto.randomBytes(15).toString("hex");
+        const salt = crypto.randomBytes(16).toString("hex");
+        const ts = now();
+        const added = await userAccounts.add({
           username,
-          usernameKey,
+          usernameKey: username.toLowerCase(),
           salt,
-          passwordHash,
-          hasPassword,
-          uid,
-          createdAt: now(),
-          updatedAt: now(),
+          passwordHash: hashPassword(password, salt),
+          hasPassword: true,
+          uid: newUid,
+          email,
+          emailKey: email,
+          emailVerifiedAt: ts,
+          createdAt: ts,
+          updatedAt: ts,
         });
-        return ok({ username });
+        // 同步网页端邮箱映射，网页的「邮箱找回 / 邮箱注册」立刻识别这个邮箱。
+        await bindAccountEmail(
+          { _id: added.id, uid: newUid, email },
+          email
+        );
+        let ticket = "";
+        try {
+          // 首次使用自定义登录时 CloudBase 会自动创建对应用户。
+          ticket = await app.auth().createTicket(newUid, { refresh: 604800 });
+        } catch (e) {
+          console.log("[api] register createTicket error:", e.message);
+          // 回滚刚写入的账号：否则用户重试会一直提示账号/邮箱已占用、
+          // 却又无法登录（票据签发失败的半成品账号）。
+          try {
+            if (added && added.id) await userAccounts.doc(added.id).remove();
+          } catch (e2) {}
+          try {
+            await tradeEmails.doc(email).remove();
+          } catch (e2) {}
+          return fail("ticket_error");
+        }
+        return ok({ uid: newUid, username, email, ticket, registered: true });
       }
 
-      // 账号 + 密码登录（兼注册）：
-      //  - 账号存在但从未设置密码（手机号登录生成的默认账号）→ 本次视为注册，设置密码并登录。
+      // 邮箱找回密码：校验邮箱验证码 → 重设账号密码 → 直接签发登录票据。
+      case "resetPasswordByEmail": {
+        await ensureUserAccounts();
+        const email = normalizeEmail(event.email);
+        if (!email) return fail("invalid_email");
+        const newPassword = String(event.newPassword || "");
+        if (newPassword.length < 6 || newPassword.length > 64) {
+          return fail("invalid_password");
+        }
+        const verified = await verifyEmailCode(
+          event.verificationId,
+          event.code,
+          event.__accessToken
+        );
+        if (verified.error) return fail(verified.error);
+        if (verified.email !== email) return fail("email_mismatch");
+
+        const acc = await findAccountByEmailAny(email);
+        if (!acc || !acc.uid) return fail("email_not_registered");
+        // 顺手补齐 emailKey / tradeEmails：网页邮箱注册的老账号可能只有 email。
+        await bindAccountEmail(acc, email);
+
+        const salt = crypto.randomBytes(16).toString("hex");
+        await userAccounts.doc(acc._id).update({
+          salt,
+          passwordHash: hashPassword(newPassword, salt),
+          hasPassword: true,
+          updatedAt: now(),
+        });
+        let ticket = "";
+        try {
+          ticket = await app.auth().createTicket(acc.uid, { refresh: 604800 });
+        } catch (e) {
+          console.log("[api] resetPassword createTicket error:", e.message);
+          return fail("ticket_error");
+        }
+        return ok({
+          uid: acc.uid,
+          username: acc.username || "",
+          email,
+          ticket,
+        });
+      }
+
+      // 绑定/更换登录邮箱（需登录）：邮箱验证码通过后写入当前账号记录。
+      case "bindEmail": {
+        if (!uid) return fail("unauthorized");
+        await ensureUserAccounts();
+        const email = normalizeEmail(event.email);
+        if (!email) return fail("invalid_email");
+        const verified = await verifyEmailCode(
+          event.verificationId,
+          event.code,
+          event.__accessToken
+        );
+        if (verified.error) return fail(verified.error);
+        if (verified.email !== email) return fail("email_mismatch");
+
+        const owner = await findAccountByEmailAny(email);
+        if (owner && owner.uid !== uid) return fail("email_taken");
+
+        const mine = await userAccounts.where({ uid }).get();
+        const row = mine.data && mine.data[0];
+        if (!row) return fail("account_not_found");
+        await bindAccountEmail(row, email);
+        return ok({ email });
+      }
+
+      // 账号 + 密码登录（账号名或邮箱均可）：
       //  - 已设置过密码 → 校验密码后登录。
+      //  - 历史「手机号登录自动生成」的账号没有密码哈希 → 本次设置密码并登录，
+      //    让老用户仍能通过账号密码继续使用。
       case "loginWithAccount": {
         await ensureUserAccounts();
         const username = String(event.username || "").trim().toLowerCase();
         if (!username) return fail("bad_request");
         const password = String(event.password || "");
-        const { data } = await userAccounts
-          .where({ usernameKey: username })
-          .limit(1)
-          .get();
-        const acc = data && data[0];
+        let acc = null;
+        if (username.includes("@")) {
+          acc = await findAccountByEmailAny(username);
+        }
+        if (!acc) {
+          const { data } = await userAccounts
+            .where({ usernameKey: username })
+            .limit(1)
+            .get();
+          acc = data && data[0];
+        }
         if (!acc) return fail("account_not_found");
+        // 网页端邮箱注册的老账号可能只有 email、没有 emailKey：
+        // 登录成功后顺手补齐，App 的邮箱找回和网页端就能共用同一份归属。
+        if (acc.email && !acc.emailKey) {
+          try {
+            await bindAccountEmail(acc, acc.email);
+          } catch (e) {}
+        }
         let registered = false;
         // 以是否存有密码哈希为准（兼容早期记录没有 hasPassword 字段的情况）。
         if (!acc.passwordHash) {
@@ -4880,16 +5109,29 @@ exports.main = async (event, context) => {
           console.log("[api] createTicket error:", e.message);
           return fail("ticket_error");
         }
-        return ok({ uid: acc.uid, ticket, registered });
+        return ok({
+          uid: acc.uid,
+          username: acc.username || username,
+          ticket,
+          registered,
+        });
       }
 
-      // 查询当前登录用户的账号名称（未设置返回空串）。
+      // 查询当前登录用户的账号名称与绑定邮箱（未设置返回空串）。
       case "getMyAccount": {
-        if (!uid) return ok({ username: "" });
+        if (!uid) return ok({ username: "", email: "" });
         await ensureUserAccounts();
         const { data } = await userAccounts.where({ uid }).limit(1).get();
         const acc = data && data[0];
-        return ok({ username: acc ? acc.username : "" });
+        if (acc && acc.email && !acc.emailKey) {
+          try {
+            await bindAccountEmail(acc, acc.email);
+          } catch (e) {}
+        }
+        return ok({
+          username: acc ? acc.username || "" : "",
+          email: acc ? acc.email || "" : "",
+        });
       }
 
       // ==================== 反馈 ====================
@@ -5111,8 +5353,8 @@ exports.main = async (event, context) => {
       // 保留 action 名以兼容旧客户端，统一返回人工开通提示。
       case "submitBadgeTxn": {
         // 旧的「自助填写交易单号自动开通」已停用：个人收款码无法验证单号真伪，
-        // 改为用户付款时备注账户名/手机号，由管理员在 App 内核对后手动开通。
-        return fail("订阅已改为人工开通：请在「订阅服务」页付款并备注账户名或手机号，管理员核对后为你开通。");
+        // 改为用户付款时备注账户名/邮箱，由管理员在 App 内核对后手动开通。
+        return fail("订阅已改为人工开通：请在「订阅服务」页付款并备注账户名或邮箱，管理员核对后为你开通。");
       }
 
       // 查询当前用户的 AI 翻译额度。
@@ -5154,7 +5396,7 @@ exports.main = async (event, context) => {
         return ok({ banned });
       }
 
-      // 第一管理员（@randeng）按账号名/手机号/用户ID 手动开通订阅。
+      // 第一管理员（@randeng）按账号名/邮箱/用户ID 手动开通订阅。
       // 只有 @randeng 能调用；订阅开通后不可取消。
       case "adminSetSubscription": {
         if (!uid) return fail("unauthorized");
@@ -5166,13 +5408,12 @@ exports.main = async (event, context) => {
         }
         if (!(await isRootAdminUser(uid))) return fail("forbidden");
         if (event.enabled === false) return fail("订阅开通后不可取消");
-        // 容忍管理员直接粘贴付款备注里的「@账户名」或带空格的手机号。
+        // 容忍管理员直接粘贴付款备注里的「@账户名」或邮箱。
         const input = String(event.input || "")
           .trim()
           .replace(/^@+/, "")
           .replace(/\s+/g, "");
-        if (!input) return fail("请输入账号名、手机号或用户ID");
-        const phoneInput = input.replace(/^(\+?86)/, "");
+        if (!input) return fail("请输入账号名、邮箱或用户ID");
         await ensureUserAccounts();
         let row = null;
         try {
@@ -5189,12 +5430,10 @@ exports.main = async (event, context) => {
           } catch (e) {}
         }
         if (!row) {
-          try {
-            const { data } = await userAccounts.where({ phone: phoneInput }).limit(1).get();
-            if (data && data.length) row = data[0];
-          } catch (e) {}
+          const byEmail = await findAccountByEmailAny(input);
+          if (byEmail) row = byEmail;
         }
-        if (!row || !row.uid) return fail("未找到该用户，请确认账号名、手机号或用户ID");
+        if (!row || !row.uid) return fail("未找到该用户，请确认账号名、邮箱或用户ID");
 
         const targetUid = String(row.uid);
         await ensureSupporterCollections();
@@ -5249,26 +5488,9 @@ exports.main = async (event, context) => {
         return ok({
           uid: targetUid,
           account: String(row.username || ""),
-          phone: String(row.phone || ""),
+          email: String(row.email || ""),
         });
       }
-
-      // 用户上报自己的手机号，供管理员按手机号开通订阅。
-      case "reportMyPhone": {
-        if (!uid) return fail("unauthorized");
-        const phone = String(event.phone || "").replace(/\s+/g, "");
-        if (!/^1\d{10}$/.test(phone)) return fail("手机号格式不正确");
-        await ensureUserAccounts();
-        const { data } = await userAccounts.where({ uid }).limit(1).get();
-        if (!data || !data.length) return ok({ saved: false });
-        try {
-          await userAccounts.doc(data[0]._id).update({ phone, updatedAt: now() });
-        } catch (e) {
-          return ok({ saved: false });
-        }
-        return ok({ saved: true });
-      }
-
 
       case "submitFeatureAppeal": {
         if (!uid) return fail("请先登录");
@@ -6518,4 +6740,114 @@ function maskRealName(raw) {
 // scrypt + 随机盐哈希密码，只存哈希不存明文。
 function hashPassword(password, salt) {
   return crypto.scryptSync(password, salt, 32).toString("hex");
+}
+
+// ==================== 邮箱验证码（注册 / 找回密码 / 绑定邮箱） ====================
+//
+// 流程：客户端先用cloudbase SDK 的 getVerification(email) 让官方邮件服务把
+// 验证码发到邮箱（返回 verification_id）；再把 verification_id + 验证码交给
+// 云函数。云函数用调用者自己的 access token 调官方 /verification/verify 校验，
+// 校验通过后才把 verification_id 里携带的邮箱视为「已验证邮箱」。
+// 这样既不用在云函数里配置 SMTP/发信密钥，客户端也无法伪造「已验邮箱」。
+
+// 邮箱格式校验：合法返回小写邮箱，非法返回空串。
+function normalizeEmail(raw) {
+  const e = String(raw || "").trim().toLowerCase();
+  if (!e || e.length > 254) return "";
+  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(e)) return "";
+  return e;
+}
+
+// 解析 CloudBase 验证码凭证（verification_id）的 JWT payload，取出投递邮箱。
+// 注意：这里只用于「知道验证码是发给哪个邮箱的」，真正是否可信取决于随后的
+// 官方校验：只有校验通过，这个邮箱才算已验证。
+function decodeVerificationEmail(verificationId) {
+  const id = String(verificationId || "");
+  const parts = id.split(".");
+  if (parts.length < 2) return "";
+  try {
+    let payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    while (payload.length % 4) payload += "=";
+    const json = JSON.parse(Buffer.from(payload, "base64").toString("utf8"));
+    return normalizeEmail(json && (json.e || json.email));
+  } catch (e) {
+    return "";
+  }
+}
+
+// 调 CloudBase 身份认证网关（POST JSON）。token 用调用者自己的 access token。
+function postAuthGateway(path, body, accessToken) {
+  return new Promise((resolve) => {
+    const envId = process.env.TCB_ENV || "randeng-d8gs968w22a3d98e8";
+    const payload = JSON.stringify(body || {});
+    const req = https.request(
+      {
+        hostname: `${envId}.api.tcloudbasegateway.com`,
+        path: `${path}?client_id=${encodeURIComponent(envId)}`,
+        method: "POST",
+        // 云函数出网代理对 keep-alive 长连接不稳定，统一用短连接。
+        agent: false,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Length": Buffer.byteLength(payload),
+          "x-device-id": "cloudfunction",
+          "x-request-id": crypto.randomBytes(16).toString("hex"),
+          Connection: "close",
+          Accept: "application/json",
+        },
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (c) =>
+          chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c))
+        );
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          let json = null;
+          try {
+            json = JSON.parse(text);
+          } catch (e) {}
+          resolve({ status: res.statusCode, json, text });
+        });
+      }
+    );
+    req.on("error", (e) => resolve({ status: 0, json: null, text: e.message }));
+    req.setTimeout(12000, () => {
+      req.destroy();
+      resolve({ status: 0, json: null, text: "timeout" });
+    });
+    req.end(payload);
+  });
+}
+
+// 校验邮箱验证码：成功返回 { email }，失败返回 { error }。
+async function verifyEmailCode(verificationId, code, accessToken) {
+  const id = String(verificationId || "");
+  if (id.length < 20 || id.length > 4096) return { error: "invalid_verification" };
+  const email = decodeVerificationEmail(id);
+  if (!email) return { error: "invalid_verification" };
+  const codeText = String(code || "").trim();
+  // CloudBase 邮件验证码通常是 4-8 位数字，这里放宽到字母数字以防模板变化。
+  if (!/^[0-9A-Za-z]{4,10}$/.test(codeText)) return { error: "invalid_code" };
+  if (!accessToken) return { error: "unauthorized" };
+  const res = await postAuthGateway(
+    "/auth/v1/verification/verify",
+    { verification_id: id, verification_code: codeText },
+    accessToken
+  );
+  const j = res.json || {};
+  const token = j.verification_token || (j.data && j.data.verification_token);
+  if (res.status !== 200 || j.error || j.error_code || !token) {
+    console.log(
+      "[api] email code verify failed:",
+      res.status,
+      String(res.text || "").slice(0, 200)
+    );
+    return { error: "wrong_code" };
+  }
+  // 防御性校验：校验凭证里若带邮箱，必须与 verification_id 里的一致。
+  const tokenEmail = decodeVerificationEmail(token);
+  if (tokenEmail && tokenEmail !== email) return { error: "email_mismatch" };
+  return { email };
 }

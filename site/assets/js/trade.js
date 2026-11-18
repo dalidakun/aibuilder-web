@@ -120,7 +120,7 @@
     price_deviation: '价格偏离过大，请稍后重试',
     rate_limited: '操作太频繁，请稍后再试',
     username_taken: '用户名已被占用',
-    account_not_found: '账号不存在',
+    account_not_found: '账号或邮箱不存在',
     wrong_password: '密码错误',
     no_password: '该账号还没设置密码，请先在燃灯 App 里设置',
     invalid_username: '账号需为 2-20 位中文、字母、数字或下划线',
@@ -128,16 +128,16 @@
     not_found: '记录不存在',
     bad_request: '请求参数不完整',
     network: '网络异常，请稍后重试',
-    // 手机号相关
-    invalid_phone: '手机号格式不对，请填 11 位大陆手机号',
-    phone_taken: '这个手机号已经绑定到别的账号了',
+    // 邮箱相关
+    invalid_email: '邮箱格式不对，请填正确的邮箱',
+    email_taken: '这个邮箱已经绑定到别的账号了',
+    email_not_bound: '这个邮箱还没绑定账号',
     too_frequent: '刚发过，请 60 秒后再试',
     too_many: '今天发得太多了，明天再试',
-    sms_failed: '短信发送失败，请稍后再试',
+    send_failed: '验证码发送失败，请稍后再试',
     code_expired: '验证码过期了，请重新获取',
     code_wrong: '验证码不对，请核对后重填',
     verify_failed: '验证码校验失败，请重新获取',
-    phone_not_bound: '这个手机号还没绑定账号',
     bad_image: '图片格式不支持，请换 JPG / PNG',
     too_large: '图片太大，换一张再试'
   };
@@ -2270,18 +2270,18 @@
     }
     var login = $('menuLogin');
     var logout = $('menuLogout');
-    var phone = $('menuPhone');
+    var mail = $('menuEmail');
     var sync = $('menuSync');
     var avatar = $('menuAvatar');
     if (login) login.hidden = Account.mode === 'cloud';
     if (logout) logout.hidden = Account.mode !== 'cloud';
     if (sync) sync.hidden = Account.mode !== 'cloud';
     if (avatar) avatar.hidden = Account.mode !== 'cloud';
-    if (phone) {
-      phone.hidden = Account.mode !== 'cloud';
-      var bound = (Account.data && Account.data.phone) || Phone.bound || '';
-      phone.textContent = bound ? '更换手机号' : '绑定手机号';
-      phone.title = bound ? '当前绑定 ' + bound : '绑定手机号';
+    if (mail) {
+      mail.hidden = Account.mode !== 'cloud';
+      var bound = (Account.data && Account.data.email) || (Mail && Mail.bound) || '';
+      mail.textContent = bound ? '更换邮箱' : '绑定邮箱';
+      mail.title = bound ? '当前绑定 ' + maskMail(bound) : '绑定邮箱';
     }
     loadTradeAvatar(false);
   }
@@ -6296,7 +6296,7 @@
     $('authErr').textContent = '';
     syncAuthMode();
     setTimeout(function () {
-      var first = authMode() === 'register' ? $('aPhone') : $('aUser');
+      var first = authMode() === 'register' ? $('aEmail') : $('aUser');
       if (first) first.focus();
     }, 30);
   }
@@ -6309,81 +6309,92 @@
     pendingNotesSlide = false;
   }
 
-  // ------------------------------------------------- 绑定手机 / 找回密码
+  // ------------------------------------------------- 绑定邮箱 / 找回密码
   //
-  // 短信验证码由云函数用云开发的验证码服务发出（App 登录用的同一套），
-  // 这里只负责收手机号、倒计时、把 id+验证码回传。两个场景：
-  //   bind  —— 已登录，把手机号绑到当前账号（之后能用它重置密码）
-  //   reset —— 未登录，验证手机号后直接改密码，再用新密码登录
-  var Phone = { scene: 'bind', id: '', phone: '', bound: '', timer: 0 };
+  // 短信通道（云开发默认腾讯云签名）2026-11-13 已下线，改用云开发邮箱验证码服务
+  // （平台内置发件）。两个场景：
+  //   bind  —— 已登录，把邮箱绑到当前账号（之后能用它重置密码）
+  //   reset —— 未登录，验证邮箱后直接改密码，再用新密码登录
+  var Mail = { scene: 'bind', id: '', email: '', bound: '', timer: 0 };
+
+  function maskMail(s) {
+    s = String(s || '');
+    var at = s.lastIndexOf('@');
+    if (at <= 0) return s;
+    return s.slice(0, Math.min(2, at)) + '***' + s.slice(at);
+  }
+
+  function isEmail(v) {
+    return /^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/.test(String(v || ''));
+  }
 
   function setAuthMode(mode) {
     var b = document.querySelector('#authSeg button[data-mode="' + mode + '"]');
     if (b && !b.classList.contains('is-on')) b.click();
   }
 
-  function openPhone(scene) {
-    var m = $('phoneModal');
+  function openEmail(scene) {
+    var m = $('emailModal');
     if (!m) return;
-    Phone.scene = scene === 'reset' ? 'reset' : 'bind';
-    Phone.id = '';
-    Phone.phone = '';
-    Phone.bound = (Account.data && Account.data.phone) || Phone.bound || '';
-    if (Phone.timer) { clearInterval(Phone.timer); Phone.timer = 0; }
-    var changing = Phone.scene === 'bind' && !!Phone.bound;
-    $('phoneTitle').textContent = Phone.scene === 'reset'
+    Mail.scene = scene === 'reset' ? 'reset' : 'bind';
+    Mail.id = '';
+    Mail.email = '';
+    Mail.bound = (Account.data && Account.data.email) || Mail.bound || '';
+    if (Mail.timer) { clearInterval(Mail.timer); Mail.timer = 0; }
+    var changing = Mail.scene === 'bind' && !!Mail.bound;
+    $('emailTitle').textContent = Mail.scene === 'reset'
       ? '找回密码'
       : changing
-        ? '更换手机号'
-        : '绑定手机号';
-    $('phoneIntro').textContent = Phone.scene === 'reset'
-      ? '用绑定过的手机号收验证码；验证通过后直接设置新密码，再用新密码登录。'
+        ? '更换邮箱'
+        : '绑定邮箱';
+    $('emailIntro').textContent = Mail.scene === 'reset'
+      ? '用绑定过的邮箱收验证码；验证通过后直接设置新密码，再用新密码登录。'
       : changing
-        ? '当前绑定 ' + Phone.bound + '。验证新手机号后会替换旧号码，旧号码自动解绑。'
-        : '绑定后可以用短信验证码重置密码，忘了密码不至于找不回来。';
-    $('pPwdField').hidden = Phone.scene !== 'reset';
-    $('pErr').textContent = '';
-    $('pPhone').value = '';
-    $('pPhone').placeholder = changing ? '新手机号' : '11 位手机号';
-    $('pCode').value = '';
-    $('pNewPwd').value = '';
-    $('pHint').textContent = '先填手机号';
-    $('pSend').disabled = false;
-    $('pSend').textContent = '获取验证码';
-    $('pSubmit').textContent = Phone.scene === 'reset' ? '重置密码' : Phone.bound ? '更换' : '绑定';
+        ? '当前绑定 ' + maskMail(Mail.bound) + '。验证新邮箱后会替换旧邮箱，旧邮箱自动解绑。'
+        : '绑定后可以用邮箱验证码重置密码，忘了密码不至于找不回来。';
+    $('ePwdField').hidden = Mail.scene !== 'reset';
+    $('eErr').textContent = '';
+    $('eEmail').value = '';
+    $('eEmail').placeholder = changing ? '新邮箱' : 'you@example.com';
+    $('eCode').value = '';
+    $('eNewPwd').value = '';
+    $('eHint').textContent = '先填邮箱';
+    $('eSend').disabled = false;
+    $('eSend').textContent = '获取验证码';
+    $('eSubmit').textContent = Mail.scene === 'reset' ? '重置密码' : Mail.bound ? '更换' : '绑定';
     m.hidden = false;
-    setTimeout(function () { $('pPhone').focus(); }, 30);
+    setTimeout(function () { $('eEmail').focus(); }, 30);
   }
 
-  function closePhone() {
-    var m = $('phoneModal');
+  function closeEmail() {
+    var m = $('emailModal');
     if (m) m.hidden = true;
-    if (Phone.timer) { clearInterval(Phone.timer); Phone.timer = 0; }
+    if (Mail.timer) { clearInterval(Mail.timer); Mail.timer = 0; }
   }
 
-  function phoneDigits() {
-    return ($('pPhone').value || '').replace(/[\s()\-]/g, '');
+  function mailValue() {
+    return ($('eEmail').value || '').trim().toLowerCase();
   }
 
-  function sendPhoneCode() {
-    var phone = phoneDigits();
-    var err = $('pErr');
+  function sendMailCode() {
+    var email = mailValue();
+    var err = $('eErr');
     err.textContent = '';
-    if (!/^1[3-9]\d{9}$/.test(phone)) { err.textContent = '请填 11 位手机号'; return; }
-    var btn = $('pSend');
+    if (!isEmail(email)) { err.textContent = '请填正确的邮箱'; return; }
+    var btn = $('eSend');
     btn.disabled = true;
     btn.textContent = '发送中…';
-    api('tradePhoneCode', { phone: phone, scene: Phone.scene }).then(function (j) {
-      Phone.id = j.id || phone;
-      Phone.phone = phone;
-      toast('验证码已发到 ' + (j.display || phone));
+    api('tradeEmailCode', { email: email, scene: Mail.scene }).then(function (j) {
+      Mail.id = j.id || email;
+      Mail.email = email;
+      toast('验证码已发到 ' + (j.display || email));
       var left = 60;
       btn.textContent = left + 's';
-      Phone.timer = setInterval(function () {
+      Mail.timer = setInterval(function () {
         left -= 1;
         if (left <= 0) {
-          clearInterval(Phone.timer);
-          Phone.timer = 0;
+          clearInterval(Mail.timer);
+          Mail.timer = 0;
           btn.disabled = false;
           btn.textContent = '重新获取';
         } else {
@@ -6397,25 +6408,25 @@
     });
   }
 
-  function submitPhone() {
-    var err = $('pErr');
-    var code = ($('pCode').value || '').trim();
+  function submitEmail() {
+    var err = $('eErr');
+    var code = ($('eCode').value || '').trim();
     err.textContent = '';
-    if (!Phone.id) { err.textContent = '请先点「获取验证码」'; return; }
+    if (!Mail.id) { err.textContent = '请先点「获取验证码」'; return; }
     if (!/^\d{4,8}$/.test(code)) { err.textContent = '请填收到的验证码'; return; }
-    var body = { id: Phone.id, code: code, scene: Phone.scene };
-    if (Phone.scene === 'reset') {
-      var pwd = $('pNewPwd').value;
+    var body = { id: Mail.id, code: code, scene: Mail.scene };
+    if (Mail.scene === 'reset') {
+      var pwd = $('eNewPwd').value;
       if (pwd.length < 6) { err.textContent = '新密码至少 6 位'; return; }
       body.newPassword = pwd;
     }
-    var btn = $('pSubmit');
+    var btn = $('eSubmit');
     btn.disabled = true;
-    api('tradePhoneConfirm', body).then(function (j) {
-      var scene = Phone.scene;
-      var wasBound = !!Phone.bound;
-      var boundPhone = j.phone || '';
-      closePhone();
+    api('tradeEmailConfirm', body).then(function (j) {
+      var scene = Mail.scene;
+      var wasBound = !!Mail.bound;
+      var boundEmail = j.email || '';
+      closeEmail();
       if (scene === 'reset') {
         toast('密码已重置，请用新密码登录');
         openModal();
@@ -6424,10 +6435,10 @@
         $('aPass').value = '';
         $('aPass').focus();
       } else {
-        Phone.bound = boundPhone;
-        if (Account.data) Account.data.phone = boundPhone;
+        Mail.bound = boundEmail;
+        if (Account.data) Account.data.email = boundEmail;
         renderAccountMenu();
-        toast(wasBound ? '手机号已更换' : (boundPhone ? '已绑定 ' + boundPhone : '手机号已绑定'));
+        toast(wasBound ? '邮箱已更换' : (boundEmail ? '已绑定 ' + maskMail(boundEmail) : '邮箱已绑定'));
       }
     }).catch(function (e) {
       err.textContent = msgOf(e && e.code);
@@ -6439,12 +6450,12 @@
     return b ? b.getAttribute('data-mode') : 'login';
   }
 
-  // 注册 tab 里的手机号注册：手机号 + 验证码 + 密码，账号名可留空（服务端自动生成）
-  var AuthCode = { id: '', phone: '', timer: 0 };
+  // 注册 tab 里的邮箱注册：邮箱 + 验证码 + 密码，账号名可留空（服务端自动生成）
+  var AuthCode = { id: '', email: '', timer: 0 };
 
-  function authPhone() {
-    var el = $('aPhone');
-    return el ? (el.value || '').replace(/[\s()\-]/g, '') : '';
+  function authEmail() {
+    var el = $('aEmail');
+    return el ? (el.value || '').trim().toLowerCase() : '';
   }
 
   function syncAuthMode() {
@@ -6462,17 +6473,17 @@
   }
 
   function sendAuthCode() {
-    var phone = authPhone();
+    var email = authEmail();
     var box = $('authErr');
     box.textContent = '';
-    if (!/^1[3-9]\d{9}$/.test(phone)) { box.textContent = '请填 11 位手机号'; return; }
+    if (!isEmail(email)) { box.textContent = '请填正确的邮箱'; return; }
     var btn = $('aSend');
     btn.disabled = true;
     btn.textContent = '发送中…';
-    api('tradePhoneCode', { phone: phone, scene: 'register' }).then(function (j) {
-      AuthCode.id = j.id || phone;
-      AuthCode.phone = phone;
-      toast('验证码已发到 ' + (j.display || phone));
+    api('tradeEmailCode', { email: email, scene: 'register' }).then(function (j) {
+      AuthCode.id = j.id || email;
+      AuthCode.email = email;
+      toast('验证码已发到 ' + (j.display || email));
       var left = 60;
       btn.textContent = left + 's';
       AuthCode.timer = setInterval(function () {
@@ -6502,14 +6513,15 @@
     box.textContent = '';
     if (p.length < 6) { box.textContent = '密码至少 6 位'; return; }
 
-    var phone = authPhone();
-    if (mode === 'register' && phone) {
+    if (mode === 'register') {
+      var email = authEmail();
+      if (!isEmail(email)) { box.textContent = '请填邮箱（用来找回密码）'; return; }
       var code = ($('aCode').value || '').trim();
       if (!AuthCode.id) { box.textContent = '请先点「获取验证码」'; return; }
       if (!/^\d{4,8}$/.test(code)) { box.textContent = '请填收到的验证码'; return; }
       btn.disabled = true;
       btn.textContent = '提交中…';
-      api('tradePhoneConfirm', {
+      api('tradeEmailConfirm', {
         id: AuthCode.id,
         code: code,
         scene: 'register',
@@ -6527,7 +6539,7 @@
         closeModal();
         renderAll();
         cloudDrawPull();
-        toast('注册成功，你的账号是 ' + Account.username);
+        toast('注册成功，你的账号是 ' + Account.username + '，邮箱已绑定');
       }).catch(function (e) {
         box.textContent = msgOf(e && e.code);
       }).then(function () {
@@ -6537,7 +6549,7 @@
       return;
     }
 
-    if (!u) { box.textContent = '请填写账号'; return; }
+    if (!u) { box.textContent = '请填写账号或邮箱'; return; }
     btn.disabled = true;
     btn.textContent = '提交中…';
     doAuth(mode, u, p).catch(function (e) {
@@ -6846,7 +6858,7 @@
         }
         else if (act === 'login') openModal();
         else if (act === 'name') openNameModal();
-        else if (act === 'phone') openPhone('bind');
+        else if (act === 'email') openEmail('bind');
         else if (act === 'sync') syncAccount();
         else if (act === 'reset') openReset();
         else if (act === 'logout') {
@@ -6904,32 +6916,32 @@
     var modal = $('authModal');
     if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
 
-    // 找回密码 / 绑定手机
+    // 找回密码 / 绑定邮箱
     var forgot = $('btnForgot');
-    if (forgot) forgot.onclick = function () { closeModal(); openPhone('reset'); };
-    var pSend = $('pSend');
-    if (pSend) pSend.onclick = sendPhoneCode;
-    var pCancel = $('pCancel');
-    if (pCancel) pCancel.onclick = closePhone;
-    var pSubmit = $('pSubmit');
-    if (pSubmit) pSubmit.onclick = submitPhone;
-    var phoneModal = $('phoneModal');
-    if (phoneModal) phoneModal.addEventListener('click', function (e) {
-      if (e.target === phoneModal) closePhone();
+    if (forgot) forgot.onclick = function () { closeModal(); openEmail('reset'); };
+    var eSend = $('eSend');
+    if (eSend) eSend.onclick = sendMailCode;
+    var eCancel = $('eCancel');
+    if (eCancel) eCancel.onclick = closeEmail;
+    var eSubmit = $('eSubmit');
+    if (eSubmit) eSubmit.onclick = submitEmail;
+    var emailModal = $('emailModal');
+    if (emailModal) emailModal.addEventListener('click', function (e) {
+      if (e.target === emailModal) closeEmail();
     });
-    var pPhone = $('pPhone');
-    if (pPhone) pPhone.addEventListener('input', function () {
-      var hint = $('pHint');
-      if (hint) hint.textContent = /^1[3-9]\d{9}$/.test(phoneDigits()) ? '可发送' : '先填手机号';
+    var eEmail = $('eEmail');
+    if (eEmail) eEmail.addEventListener('input', function () {
+      var hint = $('eHint');
+      if (hint) hint.textContent = isEmail(mailValue()) ? '可发送' : '先填邮箱';
     });
 
-    // 注册 tab 里的手机号注册
+    // 注册 tab 里的邮箱注册
     var aSend = $('aSend');
     if (aSend) aSend.onclick = sendAuthCode;
-    var aPhone = $('aPhone');
-    if (aPhone) aPhone.addEventListener('input', function () {
+    var aEmail = $('aEmail');
+    if (aEmail) aEmail.addEventListener('input', function () {
       var hint = $('aHint');
-      if (hint) hint.textContent = /^1[3-9]\d{9}$/.test(authPhone()) ? '可发送' : '先填手机号';
+      if (hint) hint.textContent = isEmail(authEmail()) ? '可发送' : '先填邮箱';
     });
     syncAuthMode();
 
@@ -6976,13 +6988,13 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         closeModal();
-        closePhone();
+        closeEmail();
         closeReset();
         closeMenus();
         closeReview();
       }
-      if (e.key === 'Enter' && document.activeElement && /aUser|aPass|aPhone|aCode/.test(document.activeElement.id)) submitAuth();
-      if (e.key === 'Enter' && document.activeElement && /pPhone|pCode|pNewPwd/.test(document.activeElement.id)) submitPhone();
+      if (e.key === 'Enter' && document.activeElement && /aUser|aPass|aEmail|aCode/.test(document.activeElement.id)) submitAuth();
+      if (e.key === 'Enter' && document.activeElement && /eEmail|eCode|eNewPwd/.test(document.activeElement.id)) submitEmail();
     });
 
     // 页面可见性 / 网络切换：不依赖浏览器一定给我们 onclose。

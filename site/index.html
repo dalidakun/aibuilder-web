@@ -379,11 +379,11 @@
     <div class="order" style="padding:14px 0 0">
       <div class="regOnly" id="regOnly" hidden>
         <label class="field">
-          <span>手机号 <em>建议填，忘了密码能找回</em></span>
-          <input type="tel" inputmode="numeric" id="aPhone" placeholder="11 位手机号" autocomplete="tel" maxlength="11">
+          <span>邮箱 <em>用来找回密码</em></span>
+          <input type="email" id="aEmail" placeholder="you@example.com" autocomplete="email" maxlength="120">
         </label>
         <div class="field">
-          <span>短信验证码 <em id="aHint">先填手机号</em></span>
+          <span>邮箱验证码 <em id="aHint">先填邮箱</em></span>
           <div class="codeRow">
             <input type="text" inputmode="numeric" id="aCode" placeholder="6 位验证码" autocomplete="one-time-code" maxlength="8">
             <button type="button" class="btn btn--ghost btn--code" id="aSend">获取验证码</button>
@@ -392,8 +392,8 @@
       </div>
 
       <label class="field">
-        <span>账号</span>
-        <input type="text" id="aUser" placeholder="2-20 位中文、字母、数字或下划线" autocomplete="username">
+        <span>账号 / 邮箱</span>
+        <input type="text" id="aUser" placeholder="AI 账号名或注册邮箱" autocomplete="username">
       </label>
       <label class="field">
         <span>密码</span>
@@ -412,37 +412,37 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- 绑定手机 / 找回密码（短信验证码走云开发验证码服务） -->
-<div class="modal" id="phoneModal" hidden>
-  <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="phoneTitle">
-    <h2 id="phoneTitle">绑定手机号</h2>
-    <p id="phoneIntro">绑定后可以用短信验证码重置密码，忘了密码不至于找不回来。</p>
+<!-- 绑定邮箱 / 找回密码（邮箱验证码走云开发验证码服务） -->
+<div class="modal" id="emailModal" hidden>
+  <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="emailTitle">
+    <h2 id="emailTitle">绑定邮箱</h2>
+    <p id="emailIntro">绑定后可以用邮箱验证码重置密码，忘了密码不至于找不回来。</p>
 
     <div class="order" style="padding:14px 0 0">
       <label class="field">
-        <span>手机号</span>
-        <input type="tel" inputmode="numeric" id="pPhone" placeholder="11 位手机号" autocomplete="tel" maxlength="11">
+        <span>邮箱</span>
+        <input type="email" id="eEmail" placeholder="you@example.com" autocomplete="email" maxlength="120">
       </label>
 
       <div class="field">
-        <span>短信验证码 <em id="pHint">先填手机号</em></span>
+        <span>邮箱验证码 <em id="eHint">先填邮箱</em></span>
         <div class="codeRow">
-          <input type="text" inputmode="numeric" id="pCode" placeholder="6 位验证码" autocomplete="one-time-code" maxlength="8">
-          <button type="button" class="btn btn--ghost btn--code" id="pSend">获取验证码</button>
+          <input type="text" inputmode="numeric" id="eCode" placeholder="6 位验证码" autocomplete="one-time-code" maxlength="8">
+          <button type="button" class="btn btn--ghost btn--code" id="eSend">获取验证码</button>
         </div>
       </div>
 
-      <label class="field" id="pPwdField" hidden>
+      <label class="field" id="ePwdField" hidden>
         <span>新密码</span>
-        <input type="password" id="pNewPwd" placeholder="至少 6 位" autocomplete="new-password">
+        <input type="password" id="eNewPwd" placeholder="至少 6 位" autocomplete="new-password">
       </label>
 
-      <div class="modal__err" id="pErr"></div>
+      <div class="modal__err" id="eErr"></div>
     </div>
 
     <div class="modal__actions">
-      <button type="button" class="btn btn--ghost" id="pCancel">取消</button>
-      <button type="button" class="btn btn--primary" id="pSubmit">绑定</button>
+      <button type="button" class="btn btn--ghost" id="eCancel">取消</button>
+      <button type="button" class="btn btn--primary" id="eSubmit">绑定</button>
     </div>
   </div>
 </div>

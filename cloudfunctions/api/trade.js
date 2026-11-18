@@ -43,8 +43,8 @@ const COLLECTIONS = [
   "tradeOrders",
   "tradeFills",
   "tradeSessions",
-  "tradePhones",
-  "tradePhoneCodes",
+  "tradeEmails",
+  "tradeEmailCodes",
   "tradeDraw",
   "tradeNotes",
   "tradeProfiles",
@@ -844,6 +844,95 @@ module.exports = function createTrade(deps) {
     return data && data[0] ? data[0] : null;
   }
 
+  async function findAccountByUid(uid) {
+    if (!uid) return null;
+    try {
+      const { data } = await db
+        .collection("userAccounts")
+        .where({ uid })
+        .limit(1)
+        .get();
+      return data && data[0] ? data[0] : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * 邮箱 → 账号（与 App 云函数共用同一份归属）：
+   *  1. tradeEmails 映射（网页邮箱注册/绑定写的）
+   *  2. userAccounts.emailKey（App 注册写的）
+   *  3. userAccounts.email（更早的网页账号只写了 email）
+   */
+  async function findAccountByEmail(address) {
+    const email = normalizeEmail(address);
+    if (!email) return null;
+    try {
+      const { data } = await emails().doc(email.address).get();
+      const owner = data && data[0];
+      if (owner && owner.uid) {
+        const acc = await findAccountByUid(owner.uid);
+        if (acc) return acc;
+      }
+    } catch (e) {}
+    try {
+      const { data } = await db
+        .collection("userAccounts")
+        .where({ emailKey: email.address })
+        .limit(1)
+        .get();
+      if (data && data[0]) return data[0];
+    } catch (e) {}
+    try {
+      const { data } = await db
+        .collection("userAccounts")
+        .where({ email: email.address })
+        .limit(1)
+        .get();
+      if (data && data[0]) return data[0];
+    } catch (e) {}
+    return null;
+  }
+
+  /**
+   * 把邮箱写到账号上：userAccounts(email / emailKey) + tradeEmails 映射同步更新。
+   * App 的注册/绑定也会调同一套字段，这样两边都能用这个邮箱找回密码。
+   */
+  async function bindEmailToAccount(acc, address, uid) {
+    const email = normalizeEmail(address);
+    const targetUid = uid || (acc && acc.uid);
+    if (!email || !targetUid) return;
+    // 已属于另一个真实账号：不覆盖（App 注册的账号也会写 emailKey/email）。
+    const existing = await findAccountByEmail(email.address);
+    if (existing && existing.uid && existing.uid !== targetUid) return;
+    const ts = Date.now();
+    const oldEmail = acc && acc.email ? normalizeEmail(acc.email) : null;
+    if (acc && oldEmail && oldEmail.address !== email.address) {
+      try {
+        const { data } = await emails().doc(oldEmail.address).get();
+        const owner = data && data[0];
+        if (owner && owner.uid === targetUid) {
+          await emails().doc(oldEmail.address).remove();
+        }
+      } catch (e) {}
+    }
+    await emails().doc(email.address).set({
+      uid: targetUid,
+      email: email.address,
+      createdAt: ts,
+    });
+    if (acc) {
+      try {
+        await db.collection("userAccounts").doc(acc._id).update({
+          email: email.address,
+          emailKey: email.address,
+          emailBoundAt: ts,
+          updatedAt: ts,
+        });
+      } catch (e) {}
+    }
+  }
+
   function checkPassword(acc, password) {
     if (!acc.passwordHash) return false;
     try {
@@ -853,14 +942,14 @@ module.exports = function createTrade(deps) {
     }
   }
 
-  // ---------------- 手机号：绑定 / 找回密码 ----------------
+  // ---------------- 邮箱：注册 / 绑定 / 找回密码 ----------------
   //
-  // 短信复用云开发自带的验证码服务（App 端 signInWithOtp 就是这一套），
-  // 服务端拿发布密钥直接调它的 REST 接口，只用来证明「手机在你手上」：
+  // 2026-11-13 起云开发默认「腾讯云签名」短信通道下线，短信验证码发不出去，
+  // 改用云开发自带的邮箱验证码服务（同一套认证接口，平台内置发件，零配置）：
   //   POST /auth/v1/verification        发码 -> verification_id
   //   POST /auth/v1/verification/verify 校验 -> verification_token
-  // 手机号↔账号的对应关系自己存（tradePhones，_id 就是手机号），
-  // 不建 CloudBase 用户，也不影响 App 那边的手机验证码登录。
+  // 邮箱↔账号的对应关系自己存（tradeEmails，_id 就是小写邮箱），
+  // 不建 CloudBase 用户，也不影响 App 那边的登录方式。
 
   const AUTH_ENV = process.env.TCB_ENV || "randeng-d8gs968w22a3d98e8";
   // 发布密钥是发给浏览器的公开值（每个页面里都带着），写在这里不算泄密。
@@ -880,11 +969,11 @@ module.exports = function createTrade(deps) {
 
   const CODE_TTL = 5 * 60 * 1000; // 验证码 5 分钟有效
   const CODE_TRIES = 5; // 同一条验证码最多试 5 次
-  const SEND_GAP = 60 * 1000; // 同一手机号 60 秒一条
-  const SEND_DAILY = 8; // 同一手机号 24 小时最多 8 条
+  const SEND_GAP = 60 * 1000; // 同一邮箱 60 秒一条
+  const SEND_DAILY = 8; // 同一邮箱 24 小时最多 8 条
 
-  const phones = () => db.collection("tradePhones");
-  const phoneCodes = () => db.collection("tradePhoneCodes");
+  const emails = () => db.collection("tradeEmails");
+  const emailCodes = () => db.collection("tradeEmailCodes");
 
   function authPost(path, body) {
     return new Promise((resolve) => {
@@ -913,7 +1002,7 @@ module.exports = function createTrade(deps) {
         }
       );
       req.on("error", (e) => resolve({ status: 0, json: null, raw: String(e && e.message) }));
-      req.setTimeout(8000, () => {
+      req.setTimeout(10000, () => {
         try { req.destroy(new Error("timeout")); } catch (e) {}
       });
       req.write(payload);
@@ -921,13 +1010,22 @@ module.exports = function createTrade(deps) {
     });
   }
 
-  /** 中国大陆手机号归一化：接受 138…、+86138…、86-138…，返回 {local, display}。 */
-  function normalizePhone(raw) {
-    let d = String(raw || "").replace(/[\s()\-]/g, "");
-    if (d.startsWith("+86")) d = d.slice(3);
-    else if (d.startsWith("86") && d.length === 13) d = d.slice(2);
-    if (!/^1[3-9]\d{9}$/.test(d)) return null;
-    return { local: d, display: d.slice(0, 3) + "****" + d.slice(7) };
+  /** 邮箱脱敏，只用于日志和回显：ab***@qq.com */
+  function maskEmail(address) {
+    const at = address.lastIndexOf("@");
+    if (at <= 0) return address;
+    const name = address.slice(0, at);
+    const domain = address.slice(at + 1);
+    const head = name.slice(0, Math.min(2, name.length));
+    return head + "***@" + domain;
+  }
+
+  /** 邮箱归一化：去空格、转小写、校验格式，返回 {address, display}。 */
+  function normalizeEmail(raw) {
+    const address = String(raw || "").trim().toLowerCase();
+    if (address.length < 6 || address.length > 120) return null;
+    if (!/^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/.test(address)) return null;
+    return { address, display: maskEmail(address) };
   }
 
   function todayKey() {
@@ -935,7 +1033,7 @@ module.exports = function createTrade(deps) {
     return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   }
 
-  /** n 位随机小写字母：手机号注册自动建账号名时用，和 App 默认账号同一套规则。 */
+  /** n 位随机小写字母：注册时自动生成账号名用，和 App 默认账号同一套规则。 */
   function randomLower(n) {
     const abc = "abcdefghijklmnopqrstuvwxyz";
     const buf = crypto.randomBytes(n);
@@ -953,15 +1051,22 @@ module.exports = function createTrade(deps) {
     const text = authField(res.json, "error_description") + " " +
       authField(res.json, "message") + " " + String(res.raw || "");
     if (/过期|expired/i.test(text)) return "code_expired";
-    if (/错误|不正确|invalid.*code|mismatch/i.test(text)) return "code_wrong";
-    return "verify_failed";
+    if (/错误|不正确|invalid.*code|mismatch|incorrect/i.test(text)) return "code_wrong";
+    if (/rate.?limit|频繁|too many/i.test(text)) return "too_frequent";
+    return "code_wrong";
   }
 
-  /** 发一条验证码，返回 {ok:true,...} 或失败对象。 */
-  async function sendCode(phone) {
-    const res = await authPost("/auth/v1/verification", { phone_number: "+86 " + phone.local });
+  /** 发一条验证码，返回 {ok:true, verificationId} 或失败对象。 */
+  async function sendCode(email) {
+    // target: ANY —— 邮箱还没注册也能收码（我们自己维护账号体系，不是 CloudBase 用户）
+    const res = await authPost("/auth/v1/verification", {
+      email: email.address,
+      target: "ANY",
+    });
     const vid = authField(res.json, "verification_id");
-    if (res.status !== 200 || !vid) return { error: "sms_failed", detail: String(res.raw || "").slice(0, 200) };
+    if (res.status !== 200 || !vid) {
+      return { error: "send_failed", detail: String(res.raw || "").slice(0, 200) };
+    }
     return { verificationId: vid };
   }
 
@@ -976,42 +1081,43 @@ module.exports = function createTrade(deps) {
     return { verified: false, error: verifyFailCode(res) };
   }
 
-  async function phoneCode(event, sessionUid) {
+  async function emailCode(event, sessionUid) {
     const scene = event.scene === "reset" ? "reset"
       : event.scene === "register" ? "register" : "bind";
-    const phone = normalizePhone(event.phone);
-    if (!phone) return fail("invalid_phone");
+    const email = normalizeEmail(event.email);
+    if (!email) return fail("invalid_email");
 
     if (scene === "bind") {
       if (!sessionUid) return fail("unauthorized");
-      const { data } = await phones().doc(phone.local).get();
-      const owner = data && data[0];
-      if (owner && owner.uid && owner.uid !== sessionUid) return fail("phone_taken");
+      const owner = await findAccountByEmail(email.address);
+      if (owner && owner.uid && owner.uid !== sessionUid) return fail("email_taken");
     }
-    // 拿已经绑过账号的号来注册：先拦下，别白花一条短信
+    // 拿已经绑过账号的邮箱来注册：先拦下，别白发一封
     if (scene === "register") {
-      const { data } = await phones().doc(phone.local).get();
-      const owner = data && data[0];
-      if (owner && owner.uid) return fail("phone_taken");
+      if (await findAccountByEmail(email.address)) return fail("email_taken");
+    }
+    // 找回密码：没绑过账号的邮箱直接拦（App 注册的账号也能识别）
+    if (scene === "reset") {
+      if (!(await findAccountByEmail(email.address))) return fail("email_not_bound");
     }
 
     const now = Date.now();
     const day = todayKey();
-    const { data: prevData } = await phoneCodes().doc(phone.local).get();
+    const { data: prevData } = await emailCodes().doc(email.address).get();
     const prev = prevData && prevData[0];
     if (prev) {
       if (now - (prev.sentAt || 0) < SEND_GAP) return fail("too_frequent");
       if (prev.dayKey === day && (prev.dayCount || 0) >= SEND_DAILY) return fail("too_many");
     }
 
-    const sent = await sendCode(phone);
+    const sent = await sendCode(email);
     if (sent.error) {
-      console.log("[trade] 发码失败", phone.display, sent.detail || "");
+      console.log("[trade] 发码失败", email.display, sent.detail || "");
       return fail(sent.error);
     }
 
-    await phoneCodes().doc(phone.local).set({
-      phone: phone.local,
+    await emailCodes().doc(email.address).set({
+      email: email.address,
       scene,
       uid: scene === "bind" ? sessionUid : "",
       verificationId: sent.verificationId,
@@ -1023,18 +1129,19 @@ module.exports = function createTrade(deps) {
       createdAt: (prev && prev.createdAt) || now,
     });
 
-    return ok({ id: phone.local, display: phone.display, expiresIn: Math.round(CODE_TTL / 1000) });
+    return ok({ id: email.address, display: email.display, expiresIn: Math.round(CODE_TTL / 1000) });
   }
 
-  async function phoneConfirm(event, sessionUid) {
+  async function emailConfirm(event, sessionUid) {
     const scene = event.scene === "reset" ? "reset"
       : event.scene === "register" ? "register" : "bind";
-    const id = String(event.id || "").trim();
+    const id = String(event.id || event.email || "").trim().toLowerCase();
     const code = String(event.code || "").trim();
-    if (!/^1[3-9]\d{9}$/.test(id)) return fail("invalid_phone");
+    const email = normalizeEmail(id);
+    if (!email) return fail("invalid_email");
     if (!/^\d{4,8}$/.test(code)) return fail("code_wrong");
 
-    const { data } = await phoneCodes().doc(id).get();
+    const { data } = await emailCodes().doc(id).get();
     const rec = data && data[0];
     if (!rec || rec.scene !== scene) return fail("code_expired");
     if ((rec.expiresAt || 0) < Date.now()) return fail("code_expired");
@@ -1043,55 +1150,33 @@ module.exports = function createTrade(deps) {
     const checked = await checkCode(rec.verificationId, code);
     if (!checked.verified) {
       try {
-        await phoneCodes().doc(id).update({ tries: (rec.tries || 0) + 1 });
+        await emailCodes().doc(id).update({ tries: (rec.tries || 0) + 1 });
       } catch (e) {}
       return fail(checked.error || "code_wrong");
     }
 
     if (scene === "bind") {
       if (!sessionUid) return fail("unauthorized");
-      const { data: ownerData } = await phones().doc(id).get();
-      const owner = ownerData && ownerData[0];
-      if (owner && owner.uid && owner.uid !== sessionUid) return fail("phone_taken");
+      const owner = await findAccountByEmail(id);
+      if (owner && owner.uid && owner.uid !== sessionUid) return fail("email_taken");
 
-      const { data: accData } = await db
-        .collection("userAccounts")
-        .where({ uid: sessionUid })
-        .limit(1)
-        .get();
-      const acc = accData && accData[0];
-
-      // 换绑：先把旧号码的映射删掉，别让旧手机还能重置密码
-      if (acc && acc.phone && acc.phone !== id) {
-        try {
-          await phones().doc(acc.phone).remove();
-        } catch (e) {}
-      }
-      await phones().doc(id).set({ uid: sessionUid, phone: id, createdAt: Date.now() });
-      if (acc) {
-        try {
-          await db.collection("userAccounts").doc(acc._id).update({
-            phone: id,
-            phoneBoundAt: Date.now(),
-            updatedAt: Date.now(),
-          });
-        } catch (e) {}
-      }
+      const acc = await findAccountByUid(sessionUid);
+      // 同步 userAccounts.emailKey，App 侧邮箱找回也认这个邮箱。
+      await bindEmailToAccount(acc, id, sessionUid);
       try {
-        await phoneCodes().doc(id).remove();
+        await emailCodes().doc(id).remove();
       } catch (e) {}
-      return ok({ phone: id.slice(0, 3) + "****" + id.slice(7) });
+      return ok({ email: id, display: email.display });
     }
 
-    // scene === register：手机号 + 验证码直接建号（账号名可留空自动生成），
-    // 建完就把手机号绑上，之后忘了密码还能用同一个号找回。
+    // scene === register：邮箱 + 验证码直接建号（账号名可留空自动生成），
+    // 建完就把邮箱绑上，之后忘了密码还能用同一个邮箱找回。
     if (scene === "register") {
       const password = String(event.password || "");
       if (password.length < 6 || password.length > 64) return fail("invalid_password");
 
-      const { data: boundData } = await phones().doc(id).get();
-      const bound = boundData && boundData[0];
-      if (bound && bound.uid) return fail("phone_taken");
+      const bound = await findAccountByEmail(id);
+      if (bound) return fail("email_taken");
 
       const wantName = String(event.username || "").trim();
       let username = "";
@@ -1101,10 +1186,9 @@ module.exports = function createTrade(deps) {
         const exists = await findAccount(username.toLowerCase());
         if (exists) return fail("username_taken");
       } else {
-        // 和 App「手机号登录自动建号」同一套规则：4 位随机小写 + 手机号后四位
-        const tail = id.slice(7);
+        // 自动账号名：u + 6 位小写字母，撞了就重试
         for (let i = 0; i < 6 && !username; i++) {
-          const cand = randomLower(4) + tail;
+          const cand = "u" + randomLower(6);
           const exists = await findAccount(cand.toLowerCase());
           if (!exists) username = cand;
         }
@@ -1113,29 +1197,32 @@ module.exports = function createTrade(deps) {
 
       const newUid = "web_" + crypto.randomBytes(14).toString("hex");
       const salt = crypto.randomBytes(16).toString("hex");
-      await db.collection("userAccounts").add({
+      const added = await db.collection("userAccounts").add({
         username,
         usernameKey: username.toLowerCase(),
         salt,
         passwordHash: deps.hashPassword(password, salt),
         hasPassword: true,
         uid: newUid,
-        phone: id,
-        phoneBoundAt: Date.now(),
+        email: id,
+        emailKey: id,
+        emailBoundAt: Date.now(),
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
-      await phones().doc(id).set({ uid: newUid, phone: id, createdAt: Date.now() });
+      // 同步 userAccounts.emailKey + tradeEmails，App 端也能用这个邮箱找回密码。
+      await bindEmailToAccount({ _id: added.id, uid: newUid, email: id }, id, newUid);
       await getOrCreateAccount(newUid);
       const token = await createSession(newUid);
       try {
-        await phoneCodes().doc(id).remove();
+        await emailCodes().doc(id).remove();
       } catch (e) {}
       return ok({
         token,
         uid: newUid,
         username,
-        phone: id.slice(0, 3) + "****" + id.slice(7),
+        email: id,
+        display: email.display,
         registered: true,
       });
     }
@@ -1144,17 +1231,10 @@ module.exports = function createTrade(deps) {
     const newPassword = String(event.newPassword || "");
     if (newPassword.length < 6 || newPassword.length > 64) return fail("invalid_password");
 
-    const { data: bindData } = await phones().doc(id).get();
-    const bind = bindData && bindData[0];
-    if (!bind || !bind.uid) return fail("phone_not_bound");
-
-    const { data: accData } = await db
-      .collection("userAccounts")
-      .where({ uid: bind.uid })
-      .limit(1)
-      .get();
-    const acc = accData && accData[0];
-    if (!acc) return fail("account_not_found");
+    const acc = await findAccountByEmail(id);
+    if (!acc || !acc.uid) return fail("email_not_bound");
+    // 补齐 emailKey / tradeEmails：App 注册的账号、早期网页账号都统一成一份归属。
+    await bindEmailToAccount(acc, id, acc.uid);
 
     const salt = crypto.randomBytes(16).toString("hex");
     await db.collection("userAccounts").doc(acc._id).update({
@@ -1164,14 +1244,14 @@ module.exports = function createTrade(deps) {
       updatedAt: Date.now(),
     });
     // 旧会话全部作废：密码换了，老 token 不能继续用
-    await removeWhere(sessions(), bind.uid);
+    await removeWhere(sessions(), acc.uid);
     try {
-      await phoneCodes().doc(id).remove();
+      await emailCodes().doc(id).remove();
     } catch (e) {}
-    return ok({ username: acc.username || "", phone: id.slice(0, 3) + "****" + id.slice(7) });
+    return ok({ username: acc.username || "", email: id, display: email.display });
   }
 
-  /**
+/**
    * 网页注册：往 userAccounts 写一条带密码的记录，uid 由服务端生成。
    *
    * 这张表就是 App「账号密码登录」读的那张，所以网页注册的账号，
@@ -1214,8 +1294,18 @@ module.exports = function createTrade(deps) {
     const password = String(event.password || "");
     if (!username) return fail("bad_request");
     if (rateLimited("login")) return fail("rate_limited");
-    const acc = await findAccount(username);
+    // 账号名或邮箱都能登录：App 注册的账号只有 emailKey，网页老账号可能只有 email。
+    let acc = null;
+    if (username.includes("@")) {
+      acc = await findAccountByEmail(username);
+    }
+    if (!acc) acc = await findAccount(username);
     if (!acc) return fail("account_not_found");
+    if (acc.email && !acc.emailKey) {
+      try {
+        await bindEmailToAccount(acc, acc.email, acc.uid);
+      } catch (e) {}
+    }
     if (!acc.passwordHash) return fail("no_password"); // 手机号登录建的默认账号，还没设密码
     if (!checkPassword(acc, password)) return fail("wrong_password");
     const token = await createSession(acc.uid);
@@ -1277,14 +1367,13 @@ module.exports = function createTrade(deps) {
       if (action === "tradeRegister") return await register(event, uid);
       if (action === "tradeLogin") return await login(event);
 
-      // 找回密码时用户还没登录，所以手机号相关动作先于会话校验；
-      // 只有「绑定手机」这一路需要登录态。
-      if (action === "tradePhoneCode" || action === "tradePhoneConfirm") {
-        // 找回密码 / 手机号注册都还没登录，只有「绑定手机」需要登录态
+      // 找回密码时用户还没登录，所以邮箱相关动作先于会话校验；
+      // 只有「绑定邮箱」这一路需要登录态。
+      if (action === "tradeEmailCode" || action === "tradeEmailConfirm") {
         const needLogin = event.scene !== "reset" && event.scene !== "register";
         const session = needLogin ? await resolveSession(event.token) : null;
-        if (action === "tradePhoneCode") return await phoneCode(event, session && session.uid);
-        return await phoneConfirm(event, session && session.uid);
+        if (action === "tradeEmailCode") return await emailCode(event, session && session.uid);
+        return await emailConfirm(event, session && session.uid);
       }
 
       const session = await resolveSession(event.token);
@@ -1296,8 +1385,8 @@ module.exports = function createTrade(deps) {
         // 历史数据兼容：同方向的多笔持仓先并成一单，再返回给前端
         await consolidatePositions(me);
         const account = await snapshot(me);
-        // 带上绑定手机（脱敏），前端据此显示「已绑定 138****0000」
-        let boundPhone = "";
+        // 带上绑定邮箱（未脱敏，就是用户自己的），前端菜单里显示成 ab***@qq.com
+        let boundEmail = "";
         try {
           const { data } = await db
             .collection("userAccounts")
@@ -1305,40 +1394,16 @@ module.exports = function createTrade(deps) {
             .limit(1)
             .get();
           const rec = data && data[0];
-          if (rec) {
-            boundPhone = String(rec.phone || rec.mobilePhoneNumber || rec.mobile || "");
-          }
-          // 网页绑定过的号码也有一份 uid→手机号 的映射
-          if (!boundPhone) {
-            const { data: pd } = await phones().where({ uid: me }).limit(1).get();
-            const p = pd && pd[0];
-            if (p && p.phone) boundPhone = String(p.phone);
+          if (rec) boundEmail = String(rec.email || "");
+          // 网页绑定过的邮箱也有一份 uid→邮箱 的映射
+          if (!boundEmail) {
+            const { data: ed } = await emails().where({ uid: me }).limit(1).get();
+            const e = ed && ed[0];
+            if (e && e.email) boundEmail = String(e.email);
           }
         } catch (e) {}
 
-        // App 手机号登录的账号，手机号在 CloudBase 身份里，不在 userAccounts；
-        // 用 Admin 接口按 uid 读一次，自动同步到网页头像菜单，避免再绑一遍。
-        if (!boundPhone && app && typeof app.auth === "function") {
-          try {
-            const auth = app.auth();
-            if (auth && typeof auth.getEndUserInfo === "function") {
-              const info = await auth.getEndUserInfo(me);
-              const u = info && info.userInfo;
-              if (u) {
-                boundPhone = String(
-                  u.phone || u.phoneNumber || u.phone_number ||
-                  u.mobilePhoneNumber || u.mobile || ""
-                );
-              }
-            }
-          } catch (e) {}
-        }
-
-        if (boundPhone) {
-          const digits = boundPhone.replace(/\D/g, "");
-          const shown = digits.length >= 11 ? digits.slice(-11) : boundPhone;
-          account.phone = shown.slice(0, 3) + "****" + shown.slice(-4);
-        }
+        if (boundEmail) account.email = boundEmail;
         return ok({ account });
       }
 
