@@ -203,9 +203,13 @@
          止损距离每单都不一样，每次自己填。 -->
     <section class="pos-calc" id="posCalc" aria-label="仓位计算">
       <div class="pos-calc__head">
-        <span>仓位计算</span>
+        <button type="button" class="pos-calc__toggle" id="posCalcToggle" aria-expanded="false" aria-controls="posCalcBody">
+          <span>仓位计算</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
         <span class="pos-calc__qty" id="calcQty"></span>
       </div>
+      <div class="pos-calc__body" id="posCalcBody" hidden>
       <div class="pos-calc__row">
         <span class="pos-calc__label">初始资金<em class="pos-calc__auto" id="calcAutoTag">自动</em></span>
         <span class="pos-calc__field">
@@ -238,6 +242,7 @@
         </div>
       </div>
       <p class="pos-calc__note">仓位 = 初始资金 × 风险R ÷ 止损距离<br>杠杆 = 仓位 ÷ 初始资金</p>
+      </div>
     </section>
 
     <div class="watch-dock">

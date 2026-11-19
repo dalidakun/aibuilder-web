@@ -6053,6 +6053,24 @@
     var stop = $('calcStop');
     if (!risk || !stop) return;
 
+    // 和自选一样默认折叠在底部，点标题栏才展开
+    var posCalcOpen = false;
+    var posCalcToggle = $('posCalcToggle');
+    var posCalcBody = $('posCalcBody');
+    function syncPosCalc() {
+      if (posCalcBody) posCalcBody.hidden = !posCalcOpen;
+      if (posCalcToggle) {
+        posCalcToggle.setAttribute('aria-expanded', posCalcOpen ? 'true' : 'false');
+      }
+    }
+    if (posCalcToggle) {
+      posCalcToggle.addEventListener('click', function () {
+        posCalcOpen = !posCalcOpen;
+        syncPosCalc();
+      });
+    }
+    syncPosCalc();
+
     // 单笔风险R：用上次填过的值，没有才用 2
     var savedRisk = parseFloat(readLS(LS_RISK_R));
     risk.value = Number.isFinite(savedRisk) && savedRisk > 0 ? String(round(savedRisk, 2)) : '2';
