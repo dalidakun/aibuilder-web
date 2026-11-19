@@ -6260,6 +6260,7 @@
 
   // 全部平仓进行中（避免连点重复提交）
   var closingAll = false;
+  var flattening = false;
 
   /** 「平仓」按钮的可用状态：有持仓、有行情、看的是 BTC 才让点。 */
   function syncCloseAllBtn() {
@@ -6273,6 +6274,54 @@
    * 持仓明细下面的「平仓」：不再按比例 / 数量平，
    * 直接按当前价把手里所有持仓 100% 平掉。
    */
+  function flattenAllPositions() {
+    var a = Account.data;
+    if (!a) return;
+    if (flattening) return;
+    if (!isTradingSymbol()) {
+      toast('切回 BTC 才能一键清仓');
+      return;
+    }
+    if (!state.price) {
+      toast('行情还没连上，稍等一下再清');
+      return;
+    }
+    var shown = (a.positions || []).length;
+    if (Account.mode === 'guest' && !shown) {
+      toast('暂无持仓');
+      return;
+    }
+    var msg = Account.mode === 'cloud'
+      ? '按当前价平掉服务器上的全部持仓（包括右侧未显示的）？\n\n会正常结算盈亏并记入历史，不会重置资金。'
+      : '按当前价平掉全部 ' + shown + ' 笔持仓？\n\n会正常结算盈亏并记入历史，不会重置资金。';
+    if (typeof window.confirm === 'function' && !window.confirm(msg)) return;
+    flattening = true;
+    var price = state.price;
+    if (Account.mode === 'guest') {
+      var list = (a.positions || []).slice();
+      var done = 0;
+      list.forEach(function (p) {
+        try {
+          localClose(p.id, price, 1);
+          done += 1;
+        } catch (e) {}
+      });
+      flattening = false;
+      renderAll();
+      toast('已一键清仓 ' + done + ' 笔持仓');
+      return;
+    }
+    api('tradeFlatten', { price: price }).then(function (j) {
+      Account.data = j.account;
+      flattening = false;
+      renderAll();
+      toast('已清空全部持仓' + (j.closed ? '（' + j.closed + ' 笔）' : ''));
+    }).catch(function (e) {
+      flattening = false;
+      showErr(e);
+    });
+  }
+
   function closeAllPositions(btn) {
     if (!isTradingSymbol()) { toast('切回 BTC 才能平仓'); return; }
     var a = Account.data;
@@ -6876,6 +6925,7 @@
         else if (act === 'name') openNameModal();
         else if (act === 'email') openEmail('bind');
         else if (act === 'sync') syncAccount();
+        else if (act === 'flatten') flattenAllPositions();
         else if (act === 'reset') openReset();
         else if (act === 'logout') {
           closeNotesSlide();

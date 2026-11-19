@@ -1769,6 +1769,29 @@ module.exports = function createTrade(deps) {
         return ok({ account: await snapshot(me) });
       }
 
+      if (action === "tradeFlatten") {
+        const price = roundPrice(num(event.price));
+        const bad = await checkPrice(me, price);
+        if (bad) return fail(bad);
+        if (rateLimited("flatten:" + me)) return fail("rate_limited");
+        const { data } = await positions().where({ uid: me }).limit(1000).get();
+        let closed = 0;
+        for (const p of data || []) {
+          if (!p || p.uid !== me) continue;
+          try {
+            if (!(+p.qty > 0)) {
+              await positions().doc(p._id).remove();
+              continue;
+            }
+            await closePosition(me, p, price, false, 1);
+            closed += 1;
+          } catch (e) {
+            console.error("[trade] flatten item error:", e && e.message ? e.message : e);
+          }
+        }
+        return ok({ account: await snapshot(me), closed });
+      }
+
       if (action === "tradeClose") {
         const price = roundPrice(num(event.price));
         const bad = await checkPrice(me, price);

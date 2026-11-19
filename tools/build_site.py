@@ -578,6 +578,7 @@ TRADE_ACCOUNT_SIDE = """<div class="topnav__account">
         <button type="button" role="menuitem" data-act="login" id="menuLogin">登录 / 注册</button>
         <button type="button" role="menuitem" data-act="email" id="menuEmail" hidden>绑定邮箱</button>
         <button type="button" role="menuitem" data-act="sync" id="menuSync" hidden>同步交易记录</button>
+        <button type="button" role="menuitem" data-act="flatten" id="menuFlatten">一键清仓</button>
         <button type="button" role="menuitem" data-act="reset" id="menuReset">重置资金</button>
         <button type="button" role="menuitem" data-act="logout" id="menuLogout" hidden>退出登录</button>
       </div>
