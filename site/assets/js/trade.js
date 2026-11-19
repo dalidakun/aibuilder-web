@@ -5820,7 +5820,7 @@
       var close = document.createElement('button');
       close.type = 'button';
       close.className = 'chart-poscard__close';
-      close.textContent = '平';
+      close.textContent = '平仓';
       close.title = '平仓';
       close.setAttribute('aria-label', '平掉' + (p.side === 'long' ? '多单' : '空单'));
       close.disabled = !mark || closingChartSide === p.side;

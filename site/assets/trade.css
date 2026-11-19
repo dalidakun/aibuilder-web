@@ -1050,9 +1050,9 @@ body.page-trade {
   left: 12px;
   top: 48px;
   z-index: 6;
-  width: 96px;
+  width: 122px;
   max-width: calc(100% - 20px);
-  padding: 2px 3px;
+  padding: 2px 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 251, 242, 0.97);
@@ -1080,7 +1080,7 @@ body.page-trade {
   display: flex;
   align-items: center;
   gap: 3px;
-  padding: 1px;
+  padding: 0 1px;
   border-top: 1px solid var(--line);
 }
 
@@ -1113,7 +1113,7 @@ body.page-trade {
   min-width: 0;
   overflow: hidden;
   color: var(--text-sec);
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 700;
   line-height: 1.1;
   text-align: right;
@@ -1132,14 +1132,15 @@ body.page-trade {
 
 .chart-poscard__close {
   flex: 0 0 auto;
-  height: 17px;
-  padding: 0 3px;
+  height: 22px;
+  padding: 0 5px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--card);
   color: var(--text);
   font: inherit;
-  font-size: 9px;
+  font-size: 10px;
+  line-height: 1;
   cursor: pointer;
 }
 
