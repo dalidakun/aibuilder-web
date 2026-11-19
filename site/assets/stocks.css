@@ -860,17 +860,28 @@ html.stk-root body::-webkit-scrollbar {
 .stk-input {
   height: 32px;
   padding: 0 10px;
-  border: 0;
+  border: 1px solid rgba(36, 31, 22, 0.26);
   border-radius: 999px;
   background: var(--bg);
   color: var(--text);
   font: inherit;
   font-size: 13px;
   outline: none;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.stk-input::placeholder {
+  color: var(--text-hint);
+  opacity: 0.82;
+}
+
+.stk-input:hover {
+  border-color: rgba(36, 31, 22, 0.4);
 }
 
 .stk-input:focus {
-  box-shadow: 0 0 0 2px rgba(48, 92, 56, 0.25);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(48, 92, 56, 0.16);
 }
 
 .stk-keyrow .stk-input {

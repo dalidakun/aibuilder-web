@@ -1860,6 +1860,15 @@
     Ind.editing = 0;
   }
 
+  // 手机上软键盘弹出会触发 scroll / resize；此时不能把正在输入的均线浮层关掉
+  function isMaInputActive() {
+    var ae = document.activeElement;
+    return !!(
+      ae &&
+      (ae.id === 'maCustom' || (ae.closest && ae.closest('#maPop')))
+    );
+  }
+
   function renderMaChips() {
     var box = $('maChips');
     if (!box) return;
@@ -4196,6 +4205,13 @@
 
     var input = $('maCustom');
     if (input) {
+      // 软键盘 / 图表手势不要抢走输入框的焦点
+      input.addEventListener('pointerdown', function (e) {
+        e.stopPropagation();
+      });
+      input.addEventListener('touchstart', function (e) {
+        e.stopPropagation();
+      }, { passive: true });
       input.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -6873,10 +6889,12 @@
 
     // 滚动/缩放后浮层还停在原地就错位了，直接收起
     window.addEventListener('resize', function () {
-      closeMenus();
+      if (!isMaInputActive()) closeMenus();
       updatePriceTag();
     });
-    window.addEventListener('scroll', function () { closeMenus(); }, true);
+    window.addEventListener('scroll', function () {
+      if (!isMaInputActive()) closeMenus();
+    }, true);
     // 关浏览器 / 切后台离开时，把画线一次性推到云端（不会反复同步）
     window.addEventListener('pagehide', cloudDrawFlush);
     window.addEventListener('beforeunload', cloudDrawFlush);

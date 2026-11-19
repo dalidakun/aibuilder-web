@@ -17,6 +17,7 @@
 <link rel="canonical" href="{{BASE_URL}}/chan/index.html">
 <link rel="stylesheet" href="{{REL}}assets/site.css?v={{ASSET_VER}}">
 <link rel="stylesheet" href="{{REL}}assets/chan.css?v={{ASSET_VER}}">
+<link rel="stylesheet" href="{{REL}}assets/chan-whiteboard.css?v={{ASSET_VER}}">
 </head>
 <body class="chan-page">
 <script>if(window.self!==window.top)document.documentElement.classList.add('is-embedded');</script>
@@ -88,6 +89,115 @@
   </button>
 </div>
 
+<!-- 教学白板：右上角悬浮入口，点开是整屏白板（画画、写字、背景、导出）。 -->
+<div class="cwb-launch" id="cwbLaunch">
+  <button type="button" class="cwb-launch__btn" id="cwbOpen" aria-haspopup="dialog" aria-controls="cwb" aria-label="打开教学白板" title="打开教学白板">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.4" width="18" height="13.2" rx="2.2"/><path d="M7 9h5.5M7 12.4h8.5"/><path d="m8.2 21 3.2-3.4M15.8 21l-3.2-3.4"/></svg>
+    <span>白板</span>
+  </button>
+</div>
+
+<!-- 整屏白板：所有内容自动保存在本浏览器 localStorage，可另存工程 JSON / 导出 PNG。
+     一块连续白板，只有顶部和左右边界，往下方无限延伸，不分页。 -->
+<div class="cwb" id="cwb" role="dialog" aria-modal="true" aria-labelledby="cwbTitle" hidden>
+  <header class="cwb-head">
+    <div class="cwb-head__lead">
+      <span class="cwb-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.4" width="18" height="13.2" rx="2.2"/><path d="M7 9h5.5M7 12.4h8.5"/><path d="m8.2 21 3.2-3.4M15.8 21l-3.2-3.4"/></svg>
+      </span>
+      <button type="button" class="cwb-title" id="cwbTitle" title="点击重命名">白板</button>
+      <input type="text" class="cwb-title-input" id="cwbTitleInput" maxlength="24" hidden aria-label="白板名称">
+    </div>
+
+    <div class="cwb-head__controls">
+      <div class="cwb-colors cwb-colors--inline" id="cwbColors" role="group" aria-label="画笔颜色"></div>
+
+      <span class="cwb-head__sep" aria-hidden="true"></span>
+
+      <button type="button" class="cwb-extendbtn" id="cwbExtendBtn" title="在点击处插入约 1.25 屏空白" aria-label="插入空白区域" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M12 9v6M9 12h6"/></svg>
+        <span>扩展</span>
+      </button>
+
+      <div class="cwb-tools-inline" id="cwbTools" role="toolbar" aria-label="绘图工具"></div>
+
+      <div class="cwb-opts" id="cwbOpts" role="toolbar" aria-label="填充与背景">
+        <button type="button" class="cwb-fillbtn" id="cwbFillBtn" aria-pressed="false" title="形状填充">填充</button>
+        <button type="button" class="cwb-bgtoggle" id="cwbBgToggle" title="切换白板 / 黑板" aria-label="切换白板 / 黑板" aria-pressed="false">
+          <span class="cwb-bgtoggle__disc" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="cwb-head__acts">
+      <span class="cwb-saved" id="cwbSaved" role="status" aria-live="polite">已保存</span>
+      <div class="cwb-menu-wrap">
+        <button type="button" class="cwb-btn cwb-btn--text" id="cwbFileBtn" aria-haspopup="true" aria-expanded="false" aria-controls="cwbFileMenu" aria-label="导出" title="导出 / 保存工程">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.8v11"/><path d="m7.8 10.8 4.2 4.2 4.2-4.2"/><path d="M4.5 17.2v2.1h15v-2.1"/></svg>
+          <span>导出</span>
+        </button>
+        <div class="cwb-pop cwb-filemenu" id="cwbFileMenu" hidden>
+          <button type="button" data-cwb-act="export-png">导出图片（PNG）</button>
+          <button type="button" data-cwb-act="export-json">保存工程文件（JSON）</button>
+          <button type="button" data-cwb-act="import">打开工程文件…</button>
+          <div class="cwb-pop__sep" role="separator"></div>
+          <button type="button" data-cwb-act="clear-page" class="is-danger">清空白板</button>
+          <p class="cwb-pop__note">内容自动保存在本浏览器</p>
+        </div>
+      </div>
+      <button type="button" class="cwb-btn cwb-btn--icon cwb-close" id="cwbClose" aria-label="关闭白板" title="关闭白板（Esc）">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="m6 6 12 12"/><path d="M18 6 6 18"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="cwb-body">
+    <div class="cwb-stage" id="cwbStage">
+      <canvas class="cwb-canvas" id="cwbBase" aria-label="白板画布"></canvas>
+      <canvas class="cwb-canvas" id="cwbLive" aria-hidden="true"></canvas>
+
+      <textarea class="cwb-textedit" id="cwbTextEdit" rows="1" spellcheck="false" hidden aria-label="在白板上输入文字"></textarea>
+
+      <div class="cwb-scrollnav" id="cwbScrollNav" hidden>
+        <button type="button" class="cwb-navarrow" id="cwbToTop" hidden aria-label="回到白板顶部" title="回到顶部">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5.8 11.2 6.2-6.2 6.2 6.2"/></svg>
+        </button>
+        <button type="button" class="cwb-navarrow" id="cwbToBottom" hidden aria-label="回到内容底部" title="回到内容底部">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m5.8 12.8 6.2 6.2 6.2-6.2"/></svg>
+        </button>
+      </div>
+
+      <div class="cwb-toast" id="cwbToast" hidden>
+        <span id="cwbToastText"></span>
+        <button type="button" id="cwbToastAct" hidden></button>
+      </div>
+
+
+      <div class="cwb-confirm" id="cwbConfirm" hidden>
+        <div class="cwb-confirm__box" role="alertdialog" aria-modal="true" aria-labelledby="cwbConfirmTitle" aria-describedby="cwbConfirmText">
+          <h2 id="cwbConfirmTitle">确认</h2>
+          <p id="cwbConfirmText"></p>
+          <div class="cwb-confirm__acts">
+            <button type="button" class="cwb-btn cwb-btn--text" id="cwbConfirmCancel">取消</button>
+            <button type="button" class="cwb-btn cwb-btn--text is-danger" id="cwbConfirmOk">确定</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cwb-sizemenu" id="cwbSizeMenu" hidden role="dialog" aria-label="工具大小">
+    <div class="cwb-sizemenu__head">
+      <span id="cwbSizeName">画笔</span>
+      <input type="number" class="cwb-sizemenu__val" id="cwbSizeVal" min="1" max="40" step="1" value="4" aria-label="大小">
+    </div>
+    <input type="range" id="cwbSizeRange" min="1" max="40" step="1" value="4" aria-label="工具大小">
+    <p class="cwb-sizemenu__note">选中工具后，在画布滚滚轮即可调大小</p>
+  </div>
+</div>
+<input type="file" id="cwbImportInput" accept="application/json,.json" hidden>
+<input type="file" id="cwbImageInput" accept="image/*" hidden>
+
 <!-- 段落注释：正文里有过注释的段落，末尾浮出一个小按钮；点它在右侧展开这一段的所有注释，
      再点一次（或点别处 / Esc）收起。数据由 assets/js/chan-annotations.js 按课拉取，
      课与课互不混淆。 -->
@@ -146,5 +256,6 @@ window.CHAN_CFG = {
 <script src="{{REL}}assets/js/chan.js?v={{ASSET_VER}}" defer></script>
 <script src="{{REL}}assets/js/chan-annotations.js?v={{ASSET_VER}}" defer></script>
 <script src="{{REL}}assets/js/chan-comments.js?v={{ASSET_VER}}" defer></script>
+<script src="{{REL}}assets/js/chan-whiteboard.js?v={{ASSET_VER}}" defer></script>
 </body>
 </html>

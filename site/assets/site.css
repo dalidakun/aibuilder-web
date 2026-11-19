@@ -1,3 +1,4 @@
+/* build 2026-11-19ae：白板顶栏一体 + 图片清晰度 + API 输入框边框 + 保存状态定宽 */
 /* ==========================================================================
    燃灯 · 素白清新主题（米黄纸感）
    整站只有一层米黄纸底，卡片/面板再不铺纯白，靠边框和「下沉块」分层；
@@ -1314,8 +1315,11 @@ a:hover {
   top: 0;
   z-index: 60;
   flex: 0 0 auto;
+  height: 45px;
   background: var(--nav-bg);
   border-bottom: 1px solid var(--border-soft);
+  transition: height 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.2s ease;
 }
 
 .topnav__inner {
@@ -1416,6 +1420,10 @@ a:hover {
 }
 
 @media (max-width: 720px) {
+  .topnav {
+    height: 41px;
+  }
+
   .topnav__inner {
     height: 40px;
     padding: 0 8px;
@@ -1470,6 +1478,30 @@ a:hover {
 /* 内嵌在行情页 iframe 里的燃灯页不重复显示侧边栏 */
 html.is-embedded .topnav {
   display: none !important;
+}
+
+/* 白板打开时父页面顶栏隐藏，白板 iframe 直接铺满整屏：
+   topnav 只隐藏可见性、不参与布局，viewport 临时 fixed，关闭时立即恢复。 */
+html.chan-wb-open .topnav {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+html.chan-wb-open .page-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  height: 100vh;
+  background: var(--bg);
+}
+
+html.chan-wb-open .page-track,
+html.chan-wb-open .page-pane {
+  height: 100vh;
+}
+
+html.chan-wb-open .page-pane--chan iframe {
+  height: 100vh;
 }
 
 /* ============================ 响应式 ============================ */

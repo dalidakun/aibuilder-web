@@ -3033,6 +3033,12 @@ body.is-fs .review-tab {
     padding: 0 12px;
   }
 
+  /* iOS 对 16px 以下的输入框会自动放大页面，导致浮层错位 / 失焦 */
+  .pop__custom input {
+    height: 36px;
+    font-size: 16px;
+  }
+
   .livebar__vol,
   .livebar__sep {
     display: none;
