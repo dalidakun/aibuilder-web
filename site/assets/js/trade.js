@@ -5981,6 +5981,15 @@
   var LS_RISK_R = 'huideng.trade.riskr';
   var CALC_STOP_DEFAULT = '2'; // 止损距离的初始值（不记忆）
   var calcManualCapital = '';  // 手填的初始资金（空 = 跟随总资产）
+  var posCalcOpen = false;     // 仓位计算默认折叠
+
+  function setPosCalcOpen(open) {
+    posCalcOpen = !!open;
+    var body = $('posCalcBody');
+    var toggle = $('posCalcToggle');
+    if (body) body.hidden = !posCalcOpen;
+    if (toggle) toggle.setAttribute('aria-expanded', posCalcOpen ? 'true' : 'false');
+  }
   var calcWasLocked = false;   // 上一帧是否因为持仓被锁（用来平仓后还回手填值）
 
   function calcNum(id) {
@@ -6054,22 +6063,13 @@
     if (!risk || !stop) return;
 
     // 和自选一样默认折叠在底部，点标题栏才展开
-    var posCalcOpen = false;
     var posCalcToggle = $('posCalcToggle');
-    var posCalcBody = $('posCalcBody');
-    function syncPosCalc() {
-      if (posCalcBody) posCalcBody.hidden = !posCalcOpen;
-      if (posCalcToggle) {
-        posCalcToggle.setAttribute('aria-expanded', posCalcOpen ? 'true' : 'false');
-      }
-    }
     if (posCalcToggle) {
       posCalcToggle.addEventListener('click', function () {
-        posCalcOpen = !posCalcOpen;
-        syncPosCalc();
+        setPosCalcOpen(!posCalcOpen);
       });
     }
-    syncPosCalc();
+    setPosCalcOpen(false);
 
     // 单笔风险R：用上次填过的值，没有才用 2
     var savedRisk = parseFloat(readLS(LS_RISK_R));
@@ -6258,7 +6258,16 @@
 
     placing = true;
     if (btn) btn.disabled = true;
+    var hadNoPositions = !((Account.data && Account.data.positions) || []).length;
     place({ kind: 'market', side: side, qty: qty, price: price }).then(function () {
+      // 之前空仓、仓位计算又展开时：开仓成功自动收起，给持仓明细腾位置
+      if (
+        hadNoPositions &&
+        posCalcOpen &&
+        ((Account.data && Account.data.positions) || []).length > 0
+      ) {
+        setPosCalcOpen(false);
+      }
       toast('已开仓 ' + fmtQty(qty) + ' BTC（' + fmtPrice(amount) + ' USDT）');
       if (field) field.value = '';
       renderEst();
