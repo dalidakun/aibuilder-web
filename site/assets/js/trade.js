@@ -5812,23 +5812,16 @@
       tag.className = 'chart-poscard__tag ' + (p.side === 'long' ? 'is-up' : 'is-down');
       tag.textContent = p.side === 'long' ? '多' : '空';
 
-      var vals = document.createElement('div');
-      vals.className = 'chart-poscard__vals';
-      var pnl = document.createElement('b');
-      pnl.className = 'chart-poscard__pnl' + (tone ? ' ' + tone : '');
-      pnl.textContent = mark ? (value >= 0 ? '+' : '') + group(value, 2) : '--';
-      pnl.title = '未实现收益（USDT）';
-      var pctEl = document.createElement('em');
-      pctEl.className = 'chart-poscard__pct' + (tone ? ' ' + tone : '');
-      pctEl.textContent = mark ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--';
-      pctEl.title = '收益率（未实现收益 ÷ 开仓金额）';
-      vals.appendChild(pnl);
-      vals.appendChild(pctEl);
+      var vals = document.createElement('span');
+      vals.className = 'chart-poscard__pct' + (tone ? ' ' + tone : '');
+      vals.textContent = mark ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--';
+      vals.title = '收益率（未实现收益 ÷ 开仓金额）';
 
       var close = document.createElement('button');
       close.type = 'button';
       close.className = 'chart-poscard__close';
-      close.textContent = '平仓';
+      close.textContent = '平';
+      close.title = '平仓';
       close.setAttribute('aria-label', '平掉' + (p.side === 'long' ? '多单' : '空单'));
       close.disabled = !mark || closingChartSide === p.side;
       close.addEventListener('click', function (e) {
@@ -5870,21 +5863,22 @@
 
   function initChartPosCard() {
     var card = $('chartPosCard');
-    var head = $('chartPosCardHead');
-    if (!card || !head) return;
+    if (!card) return;
 
-    head.addEventListener('pointerdown', function (e) {
+    card.addEventListener('pointerdown', function (e) {
       if (e.button != null && e.button !== 0) return;
+      var t = e.target;
+      if (t && t.closest && t.closest('button')) return;
       e.preventDefault();
       e.stopPropagation();
       var cr = card.getBoundingClientRect();
       chartPosDrag = { dx: e.clientX - cr.left, dy: e.clientY - cr.top };
-      head.classList.add('is-drag');
+      card.classList.add('is-drag');
       try {
-        head.setPointerCapture(e.pointerId);
+        card.setPointerCapture(e.pointerId);
       } catch (err) {}
     });
-    head.addEventListener('pointermove', function (e) {
+    card.addEventListener('pointermove', function (e) {
       if (!chartPosDrag) return;
       e.preventDefault();
       e.stopPropagation();
@@ -5900,13 +5894,13 @@
     function endDrag(e) {
       if (!chartPosDrag) return;
       chartPosDrag = null;
-      head.classList.remove('is-drag');
+      card.classList.remove('is-drag');
       try {
-        head.releasePointerCapture(e.pointerId);
+        card.releasePointerCapture(e.pointerId);
       } catch (err) {}
     }
-    head.addEventListener('pointerup', endDrag);
-    head.addEventListener('pointercancel', endDrag);
+    card.addEventListener('pointerup', endDrag);
+    card.addEventListener('pointercancel', endDrag);
     window.addEventListener('resize', applyChartPosCard);
   }
 

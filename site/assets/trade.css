@@ -1050,41 +1050,25 @@ body.page-trade {
   left: 12px;
   top: 48px;
   z-index: 6;
-  width: 202px;
-  max-width: calc(100% - 24px);
-  padding: 7px 8px 8px;
+  width: 96px;
+  max-width: calc(100% - 20px);
+  padding: 2px 3px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(255, 251, 242, 0.97);
-  box-shadow: 0 8px 22px rgba(36, 31, 22, 0.16);
+  box-shadow: 0 4px 12px rgba(36, 31, 22, 0.14);
   color: var(--text);
   user-select: none;
   touch-action: none;
+  cursor: grab;
+}
+
+.chart-poscard.is-drag {
+  cursor: grabbing;
 }
 
 .chart-poscard[hidden] {
   display: none;
-}
-
-.chart-poscard__head {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 2px 5px;
-  color: var(--text-hint);
-  font-size: 10.5px;
-  cursor: grab;
-  touch-action: none;
-}
-
-.chart-poscard__head.is-drag {
-  cursor: grabbing;
-}
-
-.chart-poscard__grip {
-  font-size: 13px;
-  line-height: 1;
-  letter-spacing: -1px;
 }
 
 .chart-poscard__rows {
@@ -1095,8 +1079,8 @@ body.page-trade {
 .chart-poscard__row {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 2px;
+  gap: 3px;
+  padding: 1px;
   border-top: 1px solid var(--line);
 }
 
@@ -1106,13 +1090,13 @@ body.page-trade {
 
 .chart-poscard__tag {
   flex: 0 0 auto;
-  width: 22px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   display: grid;
   place-items: center;
-  border-radius: 5px;
+  border-radius: 4px;
   color: #fff;
-  font-size: 10.5px;
+  font-size: 9px;
   font-weight: 700;
 }
 
@@ -1124,49 +1108,38 @@ body.page-trade {
   background: var(--down);
 }
 
-.chart-poscard__vals {
+.chart-poscard__pct {
   flex: 1 1 auto;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.18;
-}
-
-.chart-poscard__pnl {
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.chart-poscard__pct {
-  font-size: 10.5px;
-  font-weight: 600;
+  overflow: hidden;
   color: var(--text-sec);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: right;
   white-space: nowrap;
+  text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
 
-.chart-poscard__pnl.is-up,
 .chart-poscard__pct.is-up {
   color: var(--up);
 }
 
-.chart-poscard__pnl.is-down,
 .chart-poscard__pct.is-down {
   color: var(--down);
 }
 
 .chart-poscard__close {
   flex: 0 0 auto;
-  height: 24px;
-  padding: 0 7px;
+  height: 17px;
+  padding: 0 3px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--card);
   color: var(--text);
   font: inherit;
-  font-size: 11px;
+  font-size: 9px;
   cursor: pointer;
 }
 
