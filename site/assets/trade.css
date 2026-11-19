@@ -1044,6 +1044,142 @@ body.page-trade {
   border-color: var(--accent);
 }
 
+/* 主图上的浮动持仓小卡片：可拖动，直接平仓 */
+.chart-poscard {
+  position: absolute;
+  left: 12px;
+  top: 48px;
+  z-index: 6;
+  width: 202px;
+  max-width: calc(100% - 24px);
+  padding: 7px 8px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 251, 242, 0.97);
+  box-shadow: 0 8px 22px rgba(36, 31, 22, 0.16);
+  color: var(--text);
+  user-select: none;
+  touch-action: none;
+}
+
+.chart-poscard[hidden] {
+  display: none;
+}
+
+.chart-poscard__head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 2px 5px;
+  color: var(--text-hint);
+  font-size: 10.5px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.chart-poscard__head.is-drag {
+  cursor: grabbing;
+}
+
+.chart-poscard__grip {
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+
+.chart-poscard__rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-poscard__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 2px;
+  border-top: 1px solid var(--line);
+}
+
+.chart-poscard__row:first-child {
+  border-top: 0;
+}
+
+.chart-poscard__tag {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.chart-poscard__tag.is-up {
+  background: var(--up);
+}
+
+.chart-poscard__tag.is-down {
+  background: var(--down);
+}
+
+.chart-poscard__vals {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.18;
+}
+
+.chart-poscard__pnl {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-poscard__pct {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-sec);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-poscard__pnl.is-up,
+.chart-poscard__pct.is-up {
+  color: var(--up);
+}
+
+.chart-poscard__pnl.is-down,
+.chart-poscard__pct.is-down {
+  color: var(--down);
+}
+
+.chart-poscard__close {
+  flex: 0 0 auto;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chart-poscard__close:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
+
+.chart-poscard__close:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* 图表右上角工具条（画线 / 擦除 / 历史开平仓）：
    贴着主图右上角浮着，和左侧图例同一水平线；不要底色块，少挡 K 线 */
 .pane-tools {

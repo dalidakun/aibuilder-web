@@ -5766,6 +5766,150 @@
     return out;
   }
 
+  var chartPosPos = null;
+  var chartPosDrag = null;
+  var closingChartSide = '';
+
+  function applyChartPosCard() {
+    var card = $('chartPosCard');
+    if (!card || card.hidden) return;
+    var pane = card.parentNode;
+    if (!pane) return;
+    if (!chartPosPos) chartPosPos = { x: 12, y: 48 };
+    var maxX = Math.max(4, pane.clientWidth - card.offsetWidth - 6);
+    var maxY = Math.max(4, pane.clientHeight - card.offsetHeight - 6);
+    chartPosPos.x = Math.min(Math.max(4, chartPosPos.x), maxX);
+    chartPosPos.y = Math.min(Math.max(4, chartPosPos.y), maxY);
+    card.style.left = chartPosPos.x + 'px';
+    card.style.top = chartPosPos.y + 'px';
+  }
+
+  function renderChartPosCard() {
+    var card = $('chartPosCard');
+    var rows = $('chartPosCardRows');
+    if (!card || !rows) return;
+    var a = Account.data;
+    var list = groupPositions((a && a.positions) || []);
+    if (!list.length) {
+      card.hidden = true;
+      rows.innerHTML = '';
+      return;
+    }
+    card.hidden = false;
+    rows.innerHTML = '';
+    var mark = state.price;
+    list.forEach(function (p) {
+      var qty = +p.qty || 0;
+      var entry = +p.entry || 0;
+      var amount = qty * entry;
+      var value = mark ? unrealized(p, mark) : 0;
+      var pct = amount > 0 ? (value / amount) * 100 : 0;
+      var tone = value > 0 ? 'is-up' : value < 0 ? 'is-down' : '';
+      var row = document.createElement('div');
+      row.className = 'chart-poscard__row';
+
+      var tag = document.createElement('span');
+      tag.className = 'chart-poscard__tag ' + (p.side === 'long' ? 'is-up' : 'is-down');
+      tag.textContent = p.side === 'long' ? '多' : '空';
+
+      var vals = document.createElement('div');
+      vals.className = 'chart-poscard__vals';
+      var pnl = document.createElement('b');
+      pnl.className = 'chart-poscard__pnl' + (tone ? ' ' + tone : '');
+      pnl.textContent = mark ? (value >= 0 ? '+' : '') + group(value, 2) : '--';
+      pnl.title = '未实现收益（USDT）';
+      var pctEl = document.createElement('em');
+      pctEl.className = 'chart-poscard__pct' + (tone ? ' ' + tone : '');
+      pctEl.textContent = mark ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--';
+      pctEl.title = '收益率（未实现收益 ÷ 开仓金额）';
+      vals.appendChild(pnl);
+      vals.appendChild(pctEl);
+
+      var close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'chart-poscard__close';
+      close.textContent = '平仓';
+      close.setAttribute('aria-label', '平掉' + (p.side === 'long' ? '多单' : '空单'));
+      close.disabled = !mark || closingChartSide === p.side;
+      close.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeChartSide(p.side);
+      });
+
+      row.appendChild(tag);
+      row.appendChild(vals);
+      row.appendChild(close);
+      rows.appendChild(row);
+    });
+    applyChartPosCard();
+  }
+
+  function closeChartSide(side) {
+    if (!Account.data || !state.price || closingChartSide) return;
+    var price = state.price;
+    var list = (Account.data.positions || []).filter(function (p) {
+      return p && p.side === side;
+    });
+    if (!list.length) return;
+    var totalQty = 0;
+    list.forEach(function (p) { totalQty += +p.qty || 0; });
+    closingChartSide = side;
+    renderChartPosCard();
+    var chain = Promise.resolve();
+    list.forEach(function (p) {
+      chain = chain.then(function () { return closePos(p.id, price, 1); });
+    });
+    chain.then(function () {
+      toast('已平仓 ' + fmtQty(totalQty) + ' BTC（' + (side === 'long' ? '多单' : '空单') + '）');
+    }).catch(showErr).then(function () {
+      closingChartSide = '';
+      renderChartPosCard();
+    });
+  }
+
+  function initChartPosCard() {
+    var card = $('chartPosCard');
+    var head = $('chartPosCardHead');
+    if (!card || !head) return;
+
+    head.addEventListener('pointerdown', function (e) {
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var cr = card.getBoundingClientRect();
+      chartPosDrag = { dx: e.clientX - cr.left, dy: e.clientY - cr.top };
+      head.classList.add('is-drag');
+      try {
+        head.setPointerCapture(e.pointerId);
+      } catch (err) {}
+    });
+    head.addEventListener('pointermove', function (e) {
+      if (!chartPosDrag) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var pane = card.parentNode;
+      if (!pane) return;
+      var pr = pane.getBoundingClientRect();
+      chartPosPos = {
+        x: e.clientX - pr.left - chartPosDrag.dx,
+        y: e.clientY - pr.top - chartPosDrag.dy
+      };
+      applyChartPosCard();
+    });
+    function endDrag(e) {
+      if (!chartPosDrag) return;
+      chartPosDrag = null;
+      head.classList.remove('is-drag');
+      try {
+        head.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+    }
+    head.addEventListener('pointerup', endDrag);
+    head.addEventListener('pointercancel', endDrag);
+    window.addEventListener('resize', applyChartPosCard);
+  }
+
   function renderSummary() {
     var a = Account.data;
     if (!a) return;
@@ -5785,6 +5929,7 @@
     // 有持仓就锁死方向，反向那一侧点不动
     syncDirLock();
     syncCloseAllBtn();
+    renderChartPosCard();
   }
 
   /**
@@ -6815,6 +6960,9 @@
 
     // 持仓概览下面的仓位计算
     initPosCalc();
+
+    // 走势图上的浮动持仓小卡片
+    initChartPosCard();
 
     // 周期
     var tf = $('tf');
