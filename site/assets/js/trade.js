@@ -3614,9 +3614,6 @@
     if (cancel) cancel.addEventListener('click', closeLineDlg);
     var ok = $('lineDlgOk');
     if (ok) ok.addEventListener('click', confirmLineDlg);
-    dlg.addEventListener('click', function (e) {
-      if (e.target === dlg) closeLineDlg();
-    });
     var input = $('lineDlgInput');
     if (input) {
       input.addEventListener('keydown', function (e) {
@@ -3635,9 +3632,6 @@
         renderLineTfs();
       });
     }
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && !dlg.hidden) closeLineDlg();
-    });
   }
 
   /** 端点热区：按下就拖，右键出直线菜单。 */
@@ -6684,6 +6678,28 @@
     if (Mail.timer) { clearInterval(Mail.timer); Mail.timer = 0; }
   }
 
+  function addModalCloseX(id, closeFn) {
+    var m = $(id);
+    if (!m) return;
+    var box = m.querySelector('.modal__box');
+    if (!box || box.querySelector('.modal__close')) return;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'modal__close';
+    b.setAttribute('aria-label', '关闭');
+    b.textContent = '×';
+    b.addEventListener('click', closeFn);
+    box.appendChild(b);
+  }
+
+  function bindModalCloseX() {
+    addModalCloseX('authModal', closeModal);
+    addModalCloseX('emailModal', closeEmail);
+    addModalCloseX('resetModal', closeReset);
+    addModalCloseX('nameModal', closeNameModal);
+    addModalCloseX('lineDlg', closeLineDlg);
+  }
+
   function mailValue() {
     return ($('eEmail').value || '').trim().toLowerCase();
   }
@@ -7253,7 +7269,6 @@
     var submitBtn = $('authSubmit');
     if (submitBtn) submitBtn.onclick = submitAuth;
     var modal = $('authModal');
-    if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
 
     // 找回密码 / 绑定邮箱
     var forgot = $('btnForgot');
@@ -7265,9 +7280,6 @@
     var eSubmit = $('eSubmit');
     if (eSubmit) eSubmit.onclick = submitEmail;
     var emailModal = $('emailModal');
-    if (emailModal) emailModal.addEventListener('click', function (e) {
-      if (e.target === emailModal) closeEmail();
-    });
     var eEmail = $('eEmail');
     if (eEmail) eEmail.addEventListener('input', function () {
       var hint = $('eHint');
@@ -7290,9 +7302,6 @@
     var resetSubmit = $('resetSubmit');
     if (resetSubmit) resetSubmit.onclick = doReset;
     var resetModal = $('resetModal');
-    if (resetModal) resetModal.addEventListener('click', function (e) {
-      if (e.target === resetModal) closeReset();
-    });
 
     // 我的名字：保存到本地，并同步改掉以前的注释 / 提问署名
     var nameCancel = $('nameCancel');
@@ -7300,9 +7309,7 @@
     var nameSave = $('nameSave');
     if (nameSave) nameSave.onclick = saveDisplayName;
     var nameModal = $('nameModal');
-    if (nameModal) nameModal.addEventListener('click', function (e) {
-      if (e.target === nameModal) closeNameModal();
-    });
+    bindModalCloseX();
     var displayNameInput = $('displayNameInput');
     if (displayNameInput) {
       displayNameInput.addEventListener('keydown', function (e) {
@@ -7326,9 +7333,6 @@
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
-        closeModal();
-        closeEmail();
-        closeReset();
         closeMenus();
         closeReview();
       }

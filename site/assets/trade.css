@@ -295,7 +295,6 @@ body.page-trade {
   color: var(--text);
   cursor: pointer;
   flex: none;
-  overflow: hidden;
 }
 
 .avatar-btn img {
@@ -303,12 +302,14 @@ body.page-trade {
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: 50%;
 }
 
 .avatar-badge {
   position: absolute;
   top: -4px;
-  left: -4px;
+  right: -4px;
+  left: auto;
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
@@ -322,6 +323,7 @@ body.page-trade {
   font-weight: 700;
   line-height: 1;
   pointer-events: none;
+  z-index: 1;
 }
 
 .avatar-badge[hidden] {
@@ -3013,6 +3015,29 @@ body.is-fs .review-tab {
   border-radius: var(--radius-lg);
   padding: 22px 22px 20px;
   box-shadow: 0 24px 60px rgba(20, 20, 20, 0.22);
+  position: relative;
+}
+
+.modal__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-sec);
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal__close:hover {
+  background: var(--tint-bg);
+  color: var(--text);
 }
 
 .modal__box h2 {
