@@ -527,10 +527,26 @@
   /* 板块偏离度（按板块按需计算）                                        */
   /* ------------------------------------------------------------------ */
 
+  function startOfLocalDay(ts) {
+    var d = new Date(Number(ts) || 0);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  function isTodayTs(ts) {
+    return !!ts && startOfLocalDay(ts) === startOfLocalDay(Date.now());
+  }
+
   function readDevCache(period) {
     var all = readLS(LS.pool, {});
     var ent = all[period];
     if (!ent || !Array.isArray(ent.rows)) return null;
+    // 偏离度只认当天的计算；过夜后旧数据直接作废
+    if (!isTodayTs(ent.ts)) {
+      delete all[period];
+      writeLS(LS.pool, all);
+      return null;
+    }
     return ent;
   }
 
@@ -547,9 +563,19 @@
     renderSide();
   }
 
+  // 页面跨过零点仍开着时，也要把昨天的偏离度清掉，统一显示「暂无」
+  function clearStaleDevs() {
+    if (state.devTs && !isTodayTs(state.devTs)) {
+      state.devs = {};
+      state.devTs = 0;
+      renderSide();
+    }
+  }
+
   function saveDev(period, row) {
     var all = readLS(LS.pool, {});
-    var ent = all[period] || { ts: 0, rows: [] };
+    var ent = all[period];
+    if (!ent || !isTodayTs(ent.ts)) ent = { ts: 0, rows: [] };
     var rows = (ent.rows || []).filter(function (r) { return r.code !== row.code; });
     rows.push(row);
     all[period] = { ts: Date.now(), rows: rows };
@@ -2677,6 +2703,7 @@
 
     await loadCatalog();
     loadDevs(state.boardPeriod);
+    window.setInterval(clearStaleDevs, 60 * 1000);
     renderSide();
     renderPoolStocks();
     renderCompareRows();
