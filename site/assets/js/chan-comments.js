@@ -980,6 +980,7 @@
   var inboxItems = [];
   var inboxFetching = false;
   var inboxReplyOpen = null;
+  var inboxCutoff = 0;
 
   function inboxSeen() {
     var n = Number(readLS(LS_INBOX_SEEN));
@@ -1110,7 +1111,10 @@
             return (Number(it.createdAt) || 0) > seen;
           }).length
         );
-        if (inboxEl && !inboxEl.hidden) renderInbox();
+        if (inboxEl && !inboxEl.hidden) {
+          renderInbox();
+          markInboxRead();
+        }
       })
       .catch(function (e) {
         if (inboxEl && !inboxEl.hidden) toast(errorText(e));
@@ -1146,7 +1150,7 @@
   function openInbox() {
     ensureInbox();
     if (!inboxEl) return;
-    markInboxRead();
+    inboxCutoff = inboxSeen();
     inboxEl.hidden = false;
     inboxList.innerHTML = "";
     inboxList.appendChild(el("p", "chan-inbox__empty", "正在加载消息…"));
@@ -1188,11 +1192,14 @@
   function renderInbox() {
     if (!inboxList) return;
     inboxList.innerHTML = "";
-    if (!inboxItems.length) {
+    var list = inboxItems.filter(function (it) {
+      return (Number(it.createdAt) || 0) > inboxCutoff;
+    });
+    if (!list.length) {
       inboxList.appendChild(el("p", "chan-inbox__empty", "暂无新消息"));
       return;
     }
-    inboxItems.forEach(function (item) {
+    list.forEach(function (item) {
       var card = el("article", "chan-inbox__item");
       card.setAttribute("data-id", item.id);
       card.addEventListener("click", function (e) {

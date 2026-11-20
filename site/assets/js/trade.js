@@ -2357,10 +2357,8 @@
       toast('当前浏览器还没有读书会身份');
       return;
     }
-    writeLS(CHAN_MSG_SEEN, String(Date.now()));
     setChanMessageBadge(0);
-    setPane(1, true);
-    var frame = $('chanFrame');
+    setPane(1, true);    var frame = $('chanFrame');
     var tries = 0;
     function tryOpen() {
       if (!frame) {
