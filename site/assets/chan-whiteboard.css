@@ -648,6 +648,23 @@ html.cwb-open .cwb-launch {
   background: #fffdf7;
 }
 
+/* 顶部边界：固定在舞台最上沿，不跟着画布内容一起滑走 */
+.cwb-stage::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  z-index: 3;
+  background: rgba(36, 31, 22, 0.16);
+  pointer-events: none;
+}
+
+.cwb.is-dark-bg .cwb-stage::before {
+  background: rgba(247, 244, 236, 0.18);
+}
+
 .cwb-canvas {
   position: absolute;
   inset: 0;
