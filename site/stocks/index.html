@@ -215,19 +215,22 @@
       <div class="stk-detail__titles">
         <h2 id="stkDetailTitle">个股走势</h2>
       </div>
+      <div class="stk-detail__periods" id="stkDetailPeriods" role="group" aria-label="走势图周期">
+        <button type="button" data-period="60" class="is-on">1 小时</button>
+        <button type="button" data-period="d">日线</button>
+        <button type="button" data-period="w">周线</button>
+        <span id="stkDetailLegend" class="stk-detail__legend"></span>
+        <span class="stk-detail__hint">不复权</span>
+      </div>
       <button id="stkDetailClose" class="stk-iconbtn" type="button" aria-label="关闭">✕</button>
     </div>
 
-    <div class="stk-detail__periods" id="stkDetailPeriods" role="group" aria-label="走势图周期">
-      <button type="button" data-period="60" class="is-on">1 小时</button>
-      <button type="button" data-period="d">日线</button>
-      <button type="button" data-period="w">周线</button>
-      <span id="stkDetailLegend" class="stk-detail__legend"></span>
-    </div>
+    <div id="stkDetailLoading" class="stk-detail__loading" hidden>加载中…</div>
 
     <div class="stk-detail__chartwrap">
       <canvas id="stkDetailChart"></canvas>
       <div id="stkDetailChartState" class="stk-detail__state">加载中…</div>
+      <div id="stkDetailQuote" class="stk-detail__quote" hidden></div>
       <button id="stkDetailPrev" class="stk-detail__nav stk-detail__nav--prev" type="button" aria-label="上一只个股" title="上一只">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
       </button>
@@ -238,10 +241,18 @@
 
     <section id="stkDetailFinWrap" class="stk-detail__fin" aria-label="最近5年比价关系数据">
       <div class="stk-detail__finhead">
-        <h3>最近 5 年年报 · 比价关系指标</h3>
-        <span>东方财富 · 单位见表格</span>
+        <button id="stkDetailFinToggle" class="stk-detail__fintoggle" type="button" aria-expanded="false" aria-controls="stkDetailFinBody">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          <h3>最近 5 年年报 · 比价关系指标</h3>
+        </button>
+        <div class="stk-detail__fintools">
+          <span>东方财富 · 单位见表格</span>
+          <button id="stkDetailFinRefresh" class="stk-detail__finrefresh" type="button" title="刷新五年数据" aria-label="刷新五年数据" hidden>↻</button>
+        </div>
       </div>
-      <div id="stkDetailFin" class="stk-detail__finbody">加载中…</div>
+      <div id="stkDetailFinBody" class="stk-detail__finbodywrap" hidden>
+        <div id="stkDetailFin" class="stk-detail__finbody">加载中…</div>
+      </div>
     </section>
   </div>
 </div>
