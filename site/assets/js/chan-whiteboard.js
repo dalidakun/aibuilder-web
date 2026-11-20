@@ -2038,6 +2038,17 @@
     return "";
   }
 
+  function lineHandleAt(o, sp) {
+    if (!o || (o.type !== "line" && o.type !== "arrow") || !page) return 0;
+    var c = page.cam;
+    var r = handleSize() / 2 + 5;
+    var a = { x: o.x1 * c.scale + c.x, y: o.y1 * c.scale + c.y };
+    var b = { x: o.x2 * c.scale + c.x, y: o.y2 * c.scale + c.y };
+    if (Math.hypot(sp.x - a.x, sp.y - a.y) <= r) return 1;
+    if (Math.hypot(sp.x - b.x, sp.y - b.y) <= r) return 2;
+    return 0;
+  }
+
   function imageHandleHit(o, sp) {
     var b = objectBounds(o);
     var c = page.cam;
@@ -3818,6 +3829,9 @@
     if (action.kind === "resize-panel" && action.moved) {
       page.objects[action.index] = action.orig;
     }
+    if (action.kind === "resize-line" && action.moved) {
+      page.objects[action.index] = action.orig;
+    }
     action = null;
     draft = null;
     pointers = {};
@@ -3954,6 +3968,21 @@
         clearLasso(false);
       }
       var selected = findObject(selectedId);
+      if (selected && (selected.type === "line" || selected.type === "arrow")) {
+        var end = lineHandleAt(selected, sp);
+        if (end) {
+          action = {
+            kind: "resize-line",
+            id: selected.id,
+            index: objectIndex(selected.id),
+            orig: cloneObject(selected),
+            start: p,
+            end: end,
+            moved: false
+          };
+          return;
+        }
+      }
       if (selected && selected.type === "image" && imageHandleHit(selected, sp)) {
         var idx = objectIndex(selected.id);
         var resizeGroup = groupObjects(selected);
@@ -4455,6 +4484,28 @@
       e.preventDefault();
       return;
     }
+    if (action.kind === "resize-line") {
+      var lp = worldPoint(e);
+      var ln = cloneObject(action.orig);
+      var lx = clamp(lp.x, 0, boardWidth());
+      var ly = Math.max(0, lp.y);
+      if (action.end === 1) {
+        ln.x1 = lx;
+        ln.y1 = ly;
+      } else {
+        ln.x2 = lx;
+        ln.y2 = ly;
+      }
+      if (!action.moved) {
+        pushHistory();
+        action.moved = true;
+      }
+      page.objects[action.index] = ln;
+      drawAll();
+      drawLive();
+      e.preventDefault();
+      return;
+    }
     if (action.kind === "resize") {
       var rp = worldPoint(e);
       var dw = rp.x - action.start.x;
@@ -4611,7 +4662,7 @@
       markDirty();
       drawAll();
       drawLive();
-    } else if (kind === "move" || kind === "resize" || kind === "resize-text" || kind === "resize-panel") {
+    } else if (kind === "move" || kind === "resize" || kind === "resize-text" || kind === "resize-panel" || kind === "resize-line") {
       if (action.moved && !cancelled) {
         markDirty();
       } else if (cancelled && action.moved) {
@@ -5003,6 +5054,7 @@
     drawLive();
     markDirty();
     showToast("图片已粘贴");
+    imageClipboard = null;
   }
 
   function nudgeSelected(dx, dy) {
