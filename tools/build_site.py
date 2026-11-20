@@ -573,10 +573,13 @@ TRADE_ACCOUNT_SIDE = """<div class="topnav__account">
       </button>
       <div class="acct-menu" id="acctMenu" role="menu" aria-label="账户" hidden>
         <div class="acct-menu__who" id="menuWho">未登录 · 本机账户</div>
-        <button type="button" role="menuitem" data-act="name" id="menuName">我的名字</button>
-        <button type="button" role="menuitem" data-act="avatar" id="menuAvatar" hidden>更换头像</button>
+        <button type="button" role="menuitem" data-act="account" id="menuAccount" aria-expanded="false" aria-controls="accountSub">我的账户</button>
+        <div class="acct-menu__sub" id="accountSub" hidden>
+          <button type="button" role="menuitem" data-act="name" id="menuName">我的名字</button>
+          <button type="button" role="menuitem" data-act="avatar" id="menuAvatar" hidden>更换头像</button>
+          <button type="button" role="menuitem" data-act="email" id="menuEmail" hidden>绑定邮箱</button>
+        </div>
         <button type="button" role="menuitem" data-act="login" id="menuLogin">登录 / 注册</button>
-        <button type="button" role="menuitem" data-act="email" id="menuEmail" hidden>绑定邮箱</button>
         <button type="button" role="menuitem" data-act="sync" id="menuSync" hidden>同步交易记录</button>
         <button type="button" role="menuitem" data-act="flatten" id="menuFlatten">一键清仓</button>
         <button type="button" role="menuitem" data-act="reset" id="menuReset">重置资金</button>

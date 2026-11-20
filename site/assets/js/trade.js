@@ -7053,6 +7053,10 @@
         var willOpen = menu.hidden;
         closeMenus();
         if (willOpen) {
+          var sub = $('accountSub');
+          if (sub) sub.hidden = true;
+          var accountBtn = $('menuAccount');
+          if (accountBtn) accountBtn.setAttribute('aria-expanded', 'false');
           menu.hidden = false;
           menuBtn.setAttribute('aria-expanded', 'true');
         }
@@ -7082,6 +7086,14 @@
         var b = e.target && e.target.closest ? e.target.closest('button[data-act]') : null;
         if (!b) return;
         var act = b.getAttribute('data-act');
+        if (act === 'account') {
+          var sub = $('accountSub');
+          if (!sub) return;
+          var opening = sub.hidden;
+          sub.hidden = !opening;
+          b.setAttribute('aria-expanded', opening ? 'true' : 'false');
+          return;
+        }
         closeMenus();
         if (act === 'avatar') {
           var avInput = $('avatarInput');

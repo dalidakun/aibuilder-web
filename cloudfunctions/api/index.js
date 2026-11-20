@@ -4114,6 +4114,48 @@ exports.main = async (event, context) => {
         return ok({ comments, total, admin, profiles });
       }
 
+      case "getChanAdminInbox": {
+        const clientId = String(event.clientId || "").trim().slice(0, 64);
+        const secret = String(event.clientSecret || "").trim().slice(0, 128);
+        const admin = await isChanAdmin(clientId, secret);
+        if (!admin) return fail("forbidden");
+        await ensureChanComments();
+        let rows = [];
+        try {
+          const res = await chanComments.limit(1000).get();
+          rows = res.data || [];
+        } catch (e) {
+          return fail("inbox_unavailable");
+        }
+        const items = rows
+          .filter((d) => d && !d.deleted && d.clientId !== clientId)
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+          .slice(0, 80)
+          .map((d) => {
+            const all = d.images || [];
+            const imgs = [];
+            for (const src of all) {
+              if (!src || src.length > 2000000) continue;
+              imgs.push(src);
+              break;
+            }
+            return {
+              id: d._id,
+              lessonNo: d.lessonNo,
+              parentId: d.parentId || "",
+              rootId: d.rootId || "",
+              replyToName: d.replyToName || "",
+              name: d.name || "匿名读者",
+              content: d.content || "",
+              images: imgs,
+              imagesHidden: all.length > imgs.length,
+              createdAt: d.createdAt || 0,
+              clientId: d.clientId || "",
+            };
+          });
+        return ok({ items });
+      }
+
       case "createChanComment": {
         const lessonNo = Number(event.lessonNo);
         if (!(lessonNo >= 1 && lessonNo <= 108)) return fail("bad_request");

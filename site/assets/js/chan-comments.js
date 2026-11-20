@@ -318,6 +318,8 @@
           at: Date.now(),
         };
         render();
+        if (state.admin) startAdminInbox();
+        else stopAdminInbox();
       })
       .catch(function () {
         if (seq !== loadSeq || no !== lessonNo) return;
@@ -376,6 +378,7 @@
       img.loading = "lazy";
       old.parentNode.replaceChild(img, old);
     }
+    if (adminDock) renderAdminAvatar();
   }
 
   function fetchMyAvatar() {
@@ -967,7 +970,394 @@
       });
   }
 
-  /* -------------------------------------------------------------- 启动 */
+  /* ------------------------------------------------ 管理员消息 / 头像角标 */
+
+  var LS_INBOX_SEEN = "chan:admin:inboxSeen";
+  var adminDock = null;
+  var adminBadge = null;
+  var adminMenu = null;
+  var adminTimer = 0;
+  var inboxEl = null;
+  var inboxList = null;
+  var inboxItems = [];
+  var inboxFetching = false;
+  var inboxReplyOpen = null;
+
+  function inboxSeen() {
+    var n = Number(readLS(LS_INBOX_SEEN));
+    if (!n) {
+      n = Date.now();
+      writeLS(LS_INBOX_SEEN, String(n));
+    }
+    return n;
+  }
+
+  function markInboxRead() {
+    writeLS(LS_INBOX_SEEN, String(Date.now()));
+    if (adminBadge) {
+      adminBadge.hidden = true;
+      adminBadge.textContent = "";
+    }
+  }
+
+  function setAdminBadge(n) {
+    if (!adminBadge) return;
+    n = Number(n) || 0;
+    adminBadge.textContent = n > 99 ? "99+" : String(n);
+    adminBadge.hidden = n <= 0;
+  }
+
+  function renderAdminAvatar() {
+    if (!adminDock) return;
+    var box = adminDock.querySelector(".chan-admin-dock__avatar");
+    if (!box) return;
+    box.innerHTML = "";
+    if (myAvatar) {
+      var img = document.createElement("img");
+      img.src = myAvatar;
+      img.alt = "";
+      box.appendChild(img);
+    } else {
+      box.textContent =
+        String(savedName() || "管").replace(/^@+/, "").trim().charAt(0) || "管";
+    }
+  }
+
+  function ensureAdminDock() {
+    if (adminDock) return;
+    adminDock = el("div", "chan-admin-dock");
+    adminDock.id = "chanAdminDock";
+    adminDock.hidden = true;
+
+    var btn = el("button", "chan-admin-dock__btn");
+    btn.type = "button";
+    btn.setAttribute("aria-label", "管理员消息");
+    btn.setAttribute("aria-haspopup", "menu");
+    btn.setAttribute("aria-expanded", "false");
+    btn.title = "管理员消息";
+    var avatar = el("span", "chan-admin-dock__avatar");
+    adminBadge = el("span", "chan-admin-dock__badge");
+    adminBadge.hidden = true;
+    btn.appendChild(avatar);
+    btn.appendChild(adminBadge);
+
+    adminMenu = el("div", "chan-admin-menu");
+    adminMenu.hidden = true;
+    adminMenu.setAttribute("role", "menu");
+    var view = el("button", "", "查看消息");
+    view.type = "button";
+    view.setAttribute("role", "menuitem");
+    view.addEventListener("click", function () {
+      adminMenu.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+      openInbox();
+    });
+    adminMenu.appendChild(view);
+
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var willOpen = adminMenu.hidden;
+      adminMenu.hidden = !willOpen;
+      btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+    });
+    document.addEventListener("click", function (e) {
+      if (!adminDock || adminDock.hidden) return;
+      if (!adminDock.contains(e.target)) {
+        adminMenu.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    adminDock.appendChild(btn);
+    adminDock.appendChild(adminMenu);
+    document.body.appendChild(adminDock);
+    renderAdminAvatar();
+  }
+
+  function startAdminInbox() {
+    ensureAdminDock();
+    if (!adminDock) return;
+    adminDock.hidden = false;
+    renderAdminAvatar();
+    var btn = adminDock.querySelector(".chan-admin-dock__btn");
+    if (btn) btn.title = (savedName() || "管理员") + "的消息";
+    inboxSeen();
+    fetchInbox();
+    if (!adminTimer) {
+      adminTimer = window.setInterval(fetchInbox, 25000);
+    }
+  }
+
+  function stopAdminInbox() {
+    if (adminDock) adminDock.hidden = true;
+    if (adminTimer) {
+      window.clearInterval(adminTimer);
+      adminTimer = 0;
+    }
+  }
+
+  function fetchInbox() {
+    if (inboxFetching || !adminDock || adminDock.hidden) return;
+    inboxFetching = true;
+    api(
+      "getChanAdminInbox",
+      { clientId: clientId, clientSecret: secret },
+      40000
+    )
+      .then(function (j) {
+        inboxItems = (j && j.items) || [];
+        var seen = inboxSeen();
+        setAdminBadge(
+          inboxItems.filter(function (it) {
+            return (Number(it.createdAt) || 0) > seen;
+          }).length
+        );
+        if (inboxEl && !inboxEl.hidden) renderInbox();
+      })
+      .catch(function (e) {
+        if (inboxEl && !inboxEl.hidden) toast(errorText(e));
+      })
+      .then(function () {
+        inboxFetching = false;
+      });
+  }
+
+  function ensureInbox() {
+    if (inboxEl) return;
+    inboxEl = el("div", "chan-inbox");
+    inboxEl.hidden = true;
+    var box = el("div", "chan-inbox__box");
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    box.setAttribute("aria-label", "消息汇总");
+    var head = el("div", "chan-inbox__head");
+    var title = el("h2", "", "消息汇总");
+    var close = el("button", "chan-inbox__close", "×");
+    close.type = "button";
+    close.setAttribute("aria-label", "关闭消息汇总");
+    close.addEventListener("click", closeInbox);
+    head.appendChild(title);
+    head.appendChild(close);
+    inboxList = el("div", "chan-inbox__list");
+    box.appendChild(head);
+    box.appendChild(inboxList);
+    inboxEl.appendChild(box);
+    inboxEl.addEventListener("click", function (e) {
+      if (e.target === inboxEl) closeInbox();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && inboxEl && !inboxEl.hidden) closeInbox();
+    });
+    document.body.appendChild(inboxEl);
+  }
+
+  function openInbox() {
+    ensureInbox();
+    if (!inboxEl) return;
+    markInboxRead();
+    inboxEl.hidden = false;
+    inboxList.innerHTML = "";
+    inboxList.appendChild(el("p", "chan-inbox__empty", "正在加载消息…"));
+    fetchInbox();
+  }
+
+  function closeInbox() {
+    if (!inboxEl) return;
+    inboxEl.hidden = true;
+    inboxReplyOpen = null;
+  }
+
+  function goToInboxItem(item) {
+    if (!item) return;
+    closeInbox();
+    location.hash = "#l" + item.lessonNo;
+    var tries = 0;
+    function findTarget() {
+      var target = document.querySelector(
+        '.chan-comment[data-id="' + item.id + '"]'
+      );
+      if (target) {
+        target.scrollIntoView({ block: "center" });
+        return;
+      }
+      var sec = document.querySelector(
+        '.chan-lesson[data-no="' + item.lessonNo + '"]'
+      );
+      if (sec && tries > 2) {
+        var box = sec.querySelector(".chan-comments");
+        if (box) box.scrollIntoView({ block: "start" });
+      }
+      tries += 1;
+      if (tries < 9) window.setTimeout(findTarget, 350);
+    }
+    window.setTimeout(findTarget, 450);
+  }
+
+  function renderInbox() {
+    if (!inboxList) return;
+    inboxList.innerHTML = "";
+    if (!inboxItems.length) {
+      inboxList.appendChild(el("p", "chan-inbox__empty", "暂无新消息"));
+      return;
+    }
+    inboxItems.forEach(function (item) {
+      var card = el("article", "chan-inbox__item");
+      card.setAttribute("data-id", item.id);
+      card.addEventListener("click", function (e) {
+        var t = e.target;
+        if (
+          t &&
+          t.closest &&
+          t.closest("button, input, textarea, .chan-inbox__replyform")
+        ) {
+          return;
+        }
+        goToInboxItem(item);
+      });
+
+      var who = String(item.name || "匿名读者").replace(/^@+/, "");
+      var head = el("div", "chan-inbox__item-head");
+      var av = el("span", "chan-inbox__avatar", who.charAt(0) || "匿");
+      var meta = el("div", "chan-inbox__meta");
+      var name = el("b", "", who);
+      var sub = el(
+        "span",
+        "",
+        "第 " + item.lessonNo + " 课 · " + formatTime(item.createdAt)
+      );
+      meta.appendChild(name);
+      meta.appendChild(sub);
+      head.appendChild(av);
+      head.appendChild(meta);
+
+      var main = el("div", "chan-inbox__main");
+      if (item.replyToName) {
+        main.appendChild(
+          el(
+            "p",
+            "chan-inbox__replyto",
+            "回复 " + String(item.replyToName).replace(/^@+/, "")
+          )
+        );
+      }
+      if (item.content) {
+        main.appendChild(el("p", "chan-inbox__body", item.content));
+      }
+      if (item.images && item.images.length) {
+        var imgs = el("div", "chan-inbox__images");
+        item.images.forEach(function (src, i) {
+          var img = document.createElement("img");
+          img.src = src;
+          img.alt = "消息图片";
+          img.loading = "lazy";
+          img.addEventListener("click", function (e) {
+            e.stopPropagation();
+            openGallery(item.images, i);
+          });
+          imgs.appendChild(img);
+        });
+        main.appendChild(imgs);
+      }
+      if (item.imagesHidden) {
+        main.appendChild(el("p", "chan-inbox__images-note", "还有图片，打开原文查看"));
+      }
+
+      var acts = el("div", "chan-inbox__acts");
+      var reply = el("button", "", "回复");
+      reply.type = "button";
+      reply.addEventListener("click", function (e) {
+        e.stopPropagation();
+        openInboxReply(card, item);
+      });
+      var open = el("button", "", "查看原文");
+      open.type = "button";
+      open.addEventListener("click", function (e) {
+        e.stopPropagation();
+        goToInboxItem(item);
+      });
+      acts.appendChild(reply);
+      acts.appendChild(open);
+      main.appendChild(acts);
+      card.appendChild(head);
+      card.appendChild(main);
+      inboxList.appendChild(card);
+    });
+  }
+
+  function openInboxReply(card, item) {
+    if (inboxReplyOpen && inboxReplyOpen !== card) {
+      var old = inboxReplyOpen.querySelector(".chan-inbox__replyform");
+      if (old) old.remove();
+    }
+    if (card.querySelector(".chan-inbox__replyform")) {
+      card.querySelector(".chan-inbox__replyform").remove();
+      inboxReplyOpen = null;
+      return;
+    }
+    var form = el("div", "chan-comments__compose chan-inbox__replyform");
+    var ta = el("textarea");
+    ta.maxLength = 1000;
+    ta.placeholder = "回复 " + String(item.name || "读者").replace(/^@+/, "") + "…";
+    ta.setAttribute("aria-label", "回复内容");
+    form.appendChild(ta);
+    var picker = createImagePicker();
+    form.appendChild(picker.thumbs);
+    var row = el("div", "chan-comments__compose-row");
+    var send = el("button", "chan-comments__submit", "回复");
+    send.type = "button";
+    row.appendChild(picker.node);
+    row.appendChild(send);
+    form.appendChild(row);
+
+    function submit() {
+      var text = String(ta.value || "").trim();
+      var images = picker.values();
+      if (!text && !images.length) {
+        toast("写点回复或加张图片");
+        ta.focus();
+        return;
+      }
+      send.disabled = true;
+      picker.setDisabled(true);
+      send.textContent = "回复中…";
+      api(
+        "createChanComment",
+        {
+          lessonNo: item.lessonNo,
+          parentId: item.id,
+          content: text,
+          images: images,
+          name: String(savedName() || "").trim().slice(0, 20),
+          clientId: clientId,
+          clientSecret: secret,
+        },
+        40000
+      )
+        .then(function () {
+          toast("回复已发布");
+          form.remove();
+          inboxReplyOpen = null;
+          if (item.lessonNo === lessonNo) reload();
+          fetchInbox();
+        })
+        .catch(function (e) {
+          send.disabled = false;
+          send.textContent = "回复";
+          picker.setDisabled(false);
+          toast(errorText(e));
+        });
+    }
+    send.addEventListener("click", submit);
+    ta.addEventListener("keydown", function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        submit();
+      }
+    });
+    card.appendChild(form);
+    inboxReplyOpen = card;
+    ta.focus();
+  }
 
   document.addEventListener("chan:lesson", function (e) {
     var no = e && e.detail ? Number(e.detail.no) : 0;

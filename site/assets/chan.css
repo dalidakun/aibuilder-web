@@ -409,6 +409,311 @@ body.chan-page {
 
 /* 阅读页右下角：DeepSeek 鲸鱼图标（无圆圈、无底板）。
    点一次直接打开官方网页版；官方页禁止 iframe 内嵌，所以不在页面里画聊天层。 */
+/* 管理员消息头像 / 消息汇总框 */
+.chan-admin-dock {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 48;
+}
+
+.chan-admin-dock[hidden] {
+  display: none;
+}
+
+.chan-admin-dock__btn {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--card);
+  color: #fff;
+  box-shadow: 0 5px 16px rgba(36, 31, 22, 0.18);
+  cursor: pointer;
+  overflow: visible;
+}
+
+.chan-admin-dock__avatar {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chan-admin-dock__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.chan-admin-dock__badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--card);
+  border-radius: 999px;
+  background: #c83b32;
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chan-admin-dock__badge[hidden] {
+  display: none;
+}
+
+.chan-admin-menu {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  min-width: 126px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  box-shadow: 0 12px 30px rgba(36, 31, 22, 0.2);
+}
+
+.chan-admin-menu[hidden] {
+  display: none;
+}
+
+.chan-admin-menu button {
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chan-admin-menu button:hover {
+  background: var(--tint-bg);
+  color: var(--accent-deep);
+}
+
+.chan-inbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  background: rgba(24, 20, 14, 0.42);
+}
+
+.chan-inbox[hidden] {
+  display: none;
+}
+
+.chan-inbox__box {
+  width: min(640px, 100%);
+  max-height: min(82vh, 760px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 24px 70px rgba(36, 31, 22, 0.28);
+}
+
+.chan-inbox__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.chan-inbox__head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.chan-inbox__close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-sec);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chan-inbox__close:hover {
+  background: var(--tint-bg);
+  color: var(--text);
+}
+
+.chan-inbox__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 16px 16px;
+}
+
+.chan-inbox__empty {
+  margin: 28px 0;
+  color: var(--text-hint);
+  font-size: 13px;
+  text-align: center;
+}
+
+.chan-inbox__item {
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border-soft);
+  cursor: pointer;
+}
+
+.chan-inbox__item:last-child {
+  border-bottom: 0;
+}
+
+.chan-inbox__item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chan-inbox__avatar {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chan-inbox__meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.chan-inbox__meta b {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chan-inbox__meta span {
+  color: var(--text-hint);
+  font-size: 10.5px;
+}
+
+.chan-inbox__main {
+  padding-left: 34px;
+}
+
+.chan-inbox__replyto {
+  margin: 4px 0 0;
+  color: var(--accent-deep);
+  font-size: 11px;
+}
+
+.chan-inbox__body {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chan-inbox__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.chan-inbox__images img {
+  width: 58px;
+  height: 58px;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+
+.chan-inbox__images-note {
+  margin: 4px 0 0;
+  color: var(--text-hint);
+  font-size: 10.5px;
+}
+
+.chan-inbox__acts {
+  display: flex;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.chan-inbox__acts button {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--text-sec);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chan-inbox__acts button:hover {
+  color: var(--accent-deep);
+  text-decoration: underline;
+}
+
+.chan-inbox__replyform {
+  margin: 8px 0 2px 34px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--tint-bg);
+}
+
+.chan-inbox__replyform textarea {
+  width: 100%;
+  min-height: 54px;
+  resize: vertical;
+}
+
 .chan-ai-dock {
   position: fixed;
   right: 22px;
@@ -2031,5 +2336,27 @@ body.chan-page {
     display: block !important;
     break-inside: auto;
     page-break-after: always;
+  }
+}
+@media (max-width: 720px) {
+  .chan-admin-dock {
+    top: 10px;
+    right: 10px;
+  }
+
+  .chan-inbox {
+    padding: 8px;
+  }
+
+  .chan-inbox__box {
+    max-height: 86vh;
+  }
+
+  .chan-inbox__main {
+    padding-left: 0;
+  }
+
+  .chan-inbox__replyform {
+    margin-left: 0;
   }
 }
