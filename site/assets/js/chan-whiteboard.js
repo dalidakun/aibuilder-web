@@ -806,6 +806,8 @@
 
   function syncThemeUi() {
     if (!page) return;
+    var dark = theme().dark;
+    root.classList.toggle("is-dark-bg", dark);
     if (el.bgs) {
       var items = el.bgs.querySelectorAll("[data-bg]");
       for (var i = 0; i < items.length; i++) {
@@ -815,7 +817,6 @@
       }
     }
     if (el.bgToggle) {
-      var dark = theme().dark;
       el.bgToggle.classList.toggle("is-dark", dark);
       el.bgToggle.setAttribute("aria-pressed", dark ? "true" : "false");
       el.bgToggle.title = dark ? "切换到白板" : "切换到黑板";
@@ -1679,39 +1680,139 @@
     return inside;
   }
 
-  /* 给每个对象取一组代表点：笔迹取自己的采样点，线 / 箭头沿线取点，
-     形状和文字 / 图片取包围盒的角点、边中点与中心。 */
-  function lassoSamples(o) {
-    var out = [];
-    if (o.type === "pen" || o.type === "highlighter") {
-      var pts = o.points || [];
-      var step = Math.max(1, Math.ceil(pts.length / 180));
-      for (var i = 0; i < pts.length; i += step) out.push(pts[i]);
-      if (pts.length) out.push(pts[pts.length - 1]);
-      return out;
+  /* 判断两线段是否相交（含端点 / 共线贴合）。圈选时只要笔迹和圈有一点接触就算。 */
+  function onSegment(ax, ay, bx, by, px, py) {
+    return (
+      px >= Math.min(ax, bx) - 1e-6 &&
+      px <= Math.max(ax, bx) + 1e-6 &&
+      py >= Math.min(ay, by) - 1e-6 &&
+      py <= Math.max(ay, by) + 1e-6
+    );
+  }
+
+  function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+    var EPS = 1e-6;
+    var o1 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    var o2 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax);
+    var o3 = (dx - cx) * (ay - cy) - (dy - cy) * (ax - cx);
+    var o4 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx);
+    if (
+      ((o1 > EPS && o2 < -EPS) || (o1 < -EPS && o2 > EPS)) &&
+      ((o3 > EPS && o4 < -EPS) || (o3 < -EPS && o4 > EPS))
+    ) {
+      return true;
     }
-    if (o.type === "line" || o.type === "arrow") {
-      for (var t = 0; t <= 1.0001; t += 0.125) {
-        out.push({
-          x: o.x1 + (o.x2 - o.x1) * t,
-          y: o.y1 + (o.y2 - o.y1) * t
-        });
+    if (Math.abs(o1) <= EPS && onSegment(ax, ay, bx, by, cx, cy)) return true;
+    if (Math.abs(o2) <= EPS && onSegment(ax, ay, bx, by, dx, dy)) return true;
+    if (Math.abs(o3) <= EPS && onSegment(cx, cy, dx, dy, ax, ay)) return true;
+    if (Math.abs(o4) <= EPS && onSegment(cx, cy, dx, dy, bx, by)) return true;
+    return false;
+  }
+
+  /* 一条线段和套索圈是否有任何接触 */
+  function polygonSegmentHit(poly, x1, y1, x2, y2) {
+    if (pointInPolygon(poly, x1, y1) || pointInPolygon(poly, x2, y2)) {
+      return true;
+    }
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      if (
+        segmentsIntersect(
+          x1,
+          y1,
+          x2,
+          y2,
+          poly[j].x,
+          poly[j].y,
+          poly[i].x,
+          poly[i].y
+        )
+      ) {
+        return true;
       }
-      return out;
     }
-    var b = objectBounds(o);
-    out.push({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
-    out.push(
+    return false;
+  }
+
+  /* 笔迹任意一段和套索接触，整笔就算圈中 */
+  function strokeLassoHit(poly, pts) {
+    if (!pts || !pts.length) return false;
+    if (pts.length === 1) return pointInPolygon(poly, pts[0].x, pts[0].y);
+    for (var i = 1; i < pts.length; i++) {
+      if (
+        polygonSegmentHit(
+          poly,
+          pts[i - 1].x,
+          pts[i - 1].y,
+          pts[i].x,
+          pts[i].y
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function rectPolygon(b) {
+    return [
       { x: b.x, y: b.y },
       { x: b.x + b.w, y: b.y },
-      { x: b.x, y: b.y + b.h },
       { x: b.x + b.w, y: b.y + b.h },
-      { x: b.x + b.w / 2, y: b.y },
-      { x: b.x + b.w / 2, y: b.y + b.h },
-      { x: b.x, y: b.y + b.h / 2 },
-      { x: b.x + b.w, y: b.y + b.h / 2 }
-    );
-    return out;
+      { x: b.x, y: b.y + b.h }
+    ];
+  }
+
+  function ellipsePolygon(b) {
+    var pts = [];
+    var cx = b.x + b.w / 2;
+    var cy = b.y + b.h / 2;
+    var rx = Math.max(0.5, b.w / 2);
+    var ry = Math.max(0.5, b.h / 2);
+    var n = 64;
+    for (var i = 0; i < n; i++) {
+      var a = (i / n) * TAU;
+      pts.push({ x: cx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry });
+    }
+    return pts;
+  }
+
+  function polygonOverlap(a, b) {
+    var i;
+    for (i = 0; i < a.length; i++) {
+      if (pointInPolygon(b, a[i].x, a[i].y)) return true;
+    }
+    for (i = 0; i < b.length; i++) {
+      if (pointInPolygon(a, b[i].x, b[i].y)) return true;
+    }
+    for (i = 0; i < a.length; i++) {
+      var ai = a[i];
+      var aj = a[(i + 1) % a.length];
+      for (var j = 0; j < b.length; j++) {
+        var bj = b[j];
+        var bk = b[(j + 1) % b.length];
+        if (segmentsIntersect(ai.x, ai.y, aj.x, aj.y, bj.x, bj.y, bk.x, bk.y)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /* 套索圈和对象实际图形有没有接触：圈里只要压到一小段，整笔都算 */
+  function objectLassoHit(poly, o) {
+    if (o.type === "pen" || o.type === "highlighter") {
+      return strokeLassoHit(poly, o.points || []);
+    }
+    if (o.type === "line" || o.type === "arrow") {
+      return polygonSegmentHit(poly, o.x1, o.y1, o.x2, o.y2);
+    }
+    if (o.type === "rect") {
+      return polygonOverlap(poly, rectPolygon(normRect(o)));
+    }
+    if (o.type === "ellipse") {
+      return polygonOverlap(poly, ellipsePolygon(normRect(o)));
+    }
+    return polygonOverlap(poly, rectPolygon(objectBounds(o)));
   }
 
   function lassoHitIds(poly) {
@@ -1731,6 +1832,7 @@
       var o = page.objects[i];
       if (o.type === "eraser") continue;
       var b = objectBounds(o);
+      // 先按包围盒排除完全在圈外的对象，再按实际形状判断是否接触
       if (
         b.x > maxX ||
         b.x + b.w < minX ||
@@ -1739,19 +1841,7 @@
       ) {
         continue;
       }
-      var pts = lassoSamples(o);
-      if (!pts.length) continue;
-      var hit = 0;
-      for (var s = 0; s < pts.length; s++) {
-        if (pointInPolygon(poly, pts[s].x, pts[s].y)) hit++;
-      }
-      var cornersIn =
-        pointInPolygon(poly, b.x, b.y) &&
-        pointInPolygon(poly, b.x + b.w, b.y) &&
-        pointInPolygon(poly, b.x, b.y + b.h) &&
-        pointInPolygon(poly, b.x + b.w, b.y + b.h);
-      // 整块都在圈里，或者一半以上的代表点都在圈里，就算圈中
-      if (cornersIn || hit * 2 >= pts.length) ids.push(o.id);
+      if (objectLassoHit(poly, o)) ids.push(o.id);
     }
     return ids;
   }

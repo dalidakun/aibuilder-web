@@ -397,16 +397,15 @@ html.cwb-open .cwb-launch {
   width: 34px;
   height: 34px;
   padding: 0;
-  border: 1px solid rgba(36, 31, 22, 0.14);
-  border-radius: 50%;
-  background: rgba(242, 233, 212, 0.94);
-  box-shadow: 0 6px 18px rgba(20, 16, 8, 0.16);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
   color: var(--cwb-ink);
   font-size: 21px;
   font-weight: 400;
   line-height: 1;
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  opacity: 0.72;
 }
 
 .cwb-close svg {
@@ -416,9 +415,19 @@ html.cwb-open .cwb-launch {
 }
 
 .cwb-close:hover {
-  background: #ecd9d2;
-  border-color: rgba(143, 43, 43, 0.22);
+  background: transparent;
   color: var(--cwb-danger);
+  opacity: 1;
+}
+
+.cwb.is-dark-bg .cwb-close {
+  color: #f7f4ec;
+  opacity: 0.82;
+}
+
+.cwb.is-dark-bg .cwb-close:hover {
+  color: #ffb4a8;
+  opacity: 1;
 }
 
 .cwb-close:focus-visible {
