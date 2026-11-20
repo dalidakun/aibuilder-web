@@ -570,9 +570,11 @@ NAV_CURRENT = {
 TRADE_ACCOUNT_SIDE = """<div class="topnav__account">
       <button type="button" class="avatar-btn" id="btnMenu" aria-label="账户菜单" aria-haspopup="menu" aria-expanded="false" aria-controls="acctMenu">
         <img src="{rel}assets/icon.png" alt="">
+        <span class="avatar-badge" id="menuAvatarBadge" hidden></span>
       </button>
       <div class="acct-menu" id="acctMenu" role="menu" aria-label="账户" hidden>
         <div class="acct-menu__who" id="menuWho">未登录 · 本机账户</div>
+        <button type="button" role="menuitem" data-act="messages" id="menuMessages" hidden>查看消息<span class="acct-menu__msg-badge" id="menuMessagesBadge" hidden></span></button>
         <button type="button" role="menuitem" data-act="account" id="menuAccount" aria-expanded="false" aria-controls="accountSub">我的账户</button>
         <div class="acct-menu__sub" id="accountSub" hidden>
           <button type="button" role="menuitem" data-act="name" id="menuName">我的名字</button>

@@ -2295,6 +2295,97 @@
     loadTradeAvatar(false);
   }
 
+  var CHAN_MSG_SEEN = 'chan:admin:inboxSeen';
+  var chanMsgTimer = 0;
+  var chanMsgBusy = false;
+
+  function chanMsgCreds() {
+    var id = readLS('chan:anno:id');
+    var secret = readLS('chan:anno:secret');
+    return id && secret ? { clientId: id, clientSecret: secret } : null;
+  }
+
+  function chanMsgSeen() {
+    var n = Number(readLS(CHAN_MSG_SEEN));
+    if (!n) {
+      n = Date.now();
+      writeLS(CHAN_MSG_SEEN, String(n));
+    }
+    return n;
+  }
+
+  function setChanMessageBadge(n) {
+    n = Math.max(0, Number(n) || 0);
+    var text = n > 99 ? '99+' : String(n);
+    ['menuAvatarBadge', 'menuMessagesBadge'].forEach(function (id) {
+      var el = $(id);
+      if (!el) return;
+      el.textContent = text;
+      el.hidden = n <= 0;
+    });
+  }
+
+  function refreshChanMessages() {
+    var creds = chanMsgCreds();
+    var item = $('menuMessages');
+    if (!creds) {
+      if (item) item.hidden = true;
+      setChanMessageBadge(0);
+      return;
+    }
+    if (chanMsgBusy) return;
+    chanMsgBusy = true;
+    api('getChanAdminInbox', creds).then(function (j) {
+      var items = (j && j.items) || [];
+      var seen = chanMsgSeen();
+      var unread = items.filter(function (it) {
+        return (Number(it.createdAt) || 0) > seen;
+      }).length;
+      if (item) item.hidden = false;
+      setChanMessageBadge(unread);
+    }).catch(function () {
+      if (item) item.hidden = true;
+      setChanMessageBadge(0);
+    }).then(function () {
+      chanMsgBusy = false;
+    });
+  }
+
+  function openChanMessages() {
+    var creds = chanMsgCreds();
+    if (!creds) {
+      toast('当前浏览器还没有读书会身份');
+      return;
+    }
+    writeLS(CHAN_MSG_SEEN, String(Date.now()));
+    setChanMessageBadge(0);
+    setPane(1, true);
+    var frame = $('chanFrame');
+    var tries = 0;
+    function tryOpen() {
+      if (!frame) {
+        toast('消息页还没加载好，请稍后再试');
+        return;
+      }
+      try {
+        var w = frame.contentWindow;
+        if (w && w.ChanAdminInbox && typeof w.ChanAdminInbox.open === 'function') {
+          w.ChanAdminInbox.open();
+          return;
+        }
+      } catch (e) {}
+      tries += 1;
+      if (tries < 35) window.setTimeout(tryOpen, 220);
+      else toast('消息页还没加载好，请稍后再试');
+    }
+    window.setTimeout(tryOpen, 260);
+  }
+
+  function startChanMessagePolling() {
+    refreshChanMessages();
+    if (!chanMsgTimer) chanMsgTimer = window.setInterval(refreshChanMessages, 25000);
+  }
+
   // ---------------------------------------------------------------- 图表
   var Chart = {
     chart: null, candle: null, vol: null,
@@ -6958,6 +7049,9 @@
     // 走势图上的浮动持仓小卡片
     initChartPosCard();
 
+    // 读书会管理员消息：头像角标 + 查看消息
+    startChanMessagePolling();
+
     // 周期
     var tf = $('tf');
     if (tf) {
@@ -7059,6 +7153,7 @@
           if (accountBtn) accountBtn.setAttribute('aria-expanded', 'false');
           menu.hidden = false;
           menuBtn.setAttribute('aria-expanded', 'true');
+          refreshChanMessages();
         }
       });
     }
@@ -7092,6 +7187,11 @@
           var opening = sub.hidden;
           sub.hidden = !opening;
           b.setAttribute('aria-expanded', opening ? 'true' : 'false');
+          return;
+        }
+        if (act === 'messages') {
+          closeMenus();
+          openChanMessages();
           return;
         }
         closeMenus();

@@ -711,7 +711,21 @@ body.chan-page {
 .chan-inbox__replyform textarea {
   width: 100%;
   min-height: 54px;
+  padding: 7px 8px;
   resize: vertical;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: var(--tint-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.chan-inbox__replyform textarea:focus {
+  outline: none;
+  box-shadow: none;
 }
 
 .chan-ai-dock {

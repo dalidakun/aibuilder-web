@@ -318,8 +318,6 @@
           at: Date.now(),
         };
         render();
-        if (state.admin) startAdminInbox();
-        else stopAdminInbox();
       })
       .catch(function () {
         if (seq !== loadSeq || no !== lessonNo) return;
@@ -1097,7 +1095,7 @@
   }
 
   function fetchInbox() {
-    if (inboxFetching || !adminDock || adminDock.hidden) return;
+    if (inboxFetching) return;
     inboxFetching = true;
     api(
       "getChanAdminInbox",
@@ -1142,12 +1140,6 @@
     box.appendChild(head);
     box.appendChild(inboxList);
     inboxEl.appendChild(box);
-    inboxEl.addEventListener("click", function (e) {
-      if (e.target === inboxEl) closeInbox();
-    });
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && inboxEl && !inboxEl.hidden) closeInbox();
-    });
     document.body.appendChild(inboxEl);
   }
 
@@ -1369,6 +1361,7 @@
   });
 
   (function init() {
+    window.ChanAdminInbox = { open: openInbox };
     var sec = activeSection();
     if (!sec) return;
     lessonNo = Number(sec.getAttribute("data-no")) || 1;
