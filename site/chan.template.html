@@ -100,6 +100,9 @@
 <!-- 整屏白板：所有内容自动保存在本浏览器 localStorage，可另存工程 JSON / 导出 PNG。
      一块连续白板，只有顶部和左右边界，往下方无限延伸，不分页。 -->
 <div class="cwb" id="cwb" role="dialog" aria-modal="true" aria-labelledby="cwbTitle" hidden>
+  <button type="button" class="cwb-btn cwb-btn--icon cwb-close" id="cwbClose" aria-label="关闭白板" title="关闭白板（Esc）">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="m6 6 12 12"/><path d="M18 6 6 18"/></svg>
+  </button>
   <header class="cwb-head">
     <div class="cwb-head__lead">
       <span class="cwb-logo" aria-hidden="true">
@@ -145,9 +148,6 @@
           <p class="cwb-pop__note">内容自动保存在本浏览器</p>
         </div>
       </div>
-      <button type="button" class="cwb-btn cwb-btn--icon cwb-close" id="cwbClose" aria-label="关闭白板" title="关闭白板（Esc）">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="m6 6 12 12"/><path d="M18 6 6 18"/></svg>
-      </button>
     </div>
   </header>
 

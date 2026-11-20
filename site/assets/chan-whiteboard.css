@@ -390,9 +390,23 @@ html.cwb-open .cwb-launch {
 }
 
 .cwb-close {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  right: 10px;
+  z-index: 20;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(36, 31, 22, 0.14);
+  border-radius: 50%;
+  background: rgba(242, 233, 212, 0.94);
+  box-shadow: 0 6px 18px rgba(20, 16, 8, 0.16);
+  color: var(--cwb-ink);
   font-size: 21px;
   font-weight: 400;
   line-height: 1;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 
 .cwb-close svg {
@@ -403,7 +417,13 @@ html.cwb-open .cwb-launch {
 
 .cwb-close:hover {
   background: #ecd9d2;
+  border-color: rgba(143, 43, 43, 0.22);
   color: var(--cwb-danger);
+}
+
+.cwb-close:focus-visible {
+  outline: 2px solid var(--cwb-accent);
+  outline-offset: 2px;
 }
 
 .cwb-saved {
@@ -644,6 +664,7 @@ html.cwb-open .cwb-launch {
   cursor: default;
 }
 
+.cwb-stage[data-tool="lasso"],
 .cwb-stage[data-tool="pen"],
 .cwb-stage[data-tool="highlighter"],
 .cwb-stage[data-tool="line"],
@@ -1489,6 +1510,11 @@ html.cwb-open .cwb-launch {
   .cwb-btn--icon {
     width: 29px;
     padding: 0;
+  }
+
+  .cwb-close {
+    width: 34px;
+    height: 34px;
   }
 
   #cwbFocusBtn {

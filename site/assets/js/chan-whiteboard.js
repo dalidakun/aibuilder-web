@@ -5,7 +5,7 @@
    - 无限画布：空格或中键拖动平移，Ctrl+滚轮或双指缩放，0 一键适应内容
    - 一块连续白板：上有顶部、左、右边界，向下无限延伸，不分页
    - 背景（白板 / 黑板 / 米黄纸 / 方格 / 点阵 / 横线）
-   - 选择、移动、缩放图片、复制、删除、撤销 / 重做
+   - 圈选一片画线后整体拖动，选择、移动、缩放图片、复制、删除、撤销 / 重做
    - 所有改动自动存进 localStorage；另可导出 PNG、保存 / 打开工程 JSON
    纯前端，不依赖任何接口；图片先压成 WebP data URL 再存本地。 */
 (function () {
@@ -246,6 +246,17 @@
       icon: svg('<path d="m6 4.2 11.4 7.1-5.1 1.3-1.6 5z"/>')
     },
     {
+      id: "lasso",
+      name: "圈选 / 整体拖动",
+      key: "C",
+      title: "圈选：圈住一片画线，再按 V / 直接拖动整体移动（C）",
+      icon: svg(
+        '<path d="M7 22a5 5 0 0 1-2-4"/>' +
+          '<path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1"/>' +
+          '<circle cx="5" cy="16" r="2"/>'
+      )
+    },
+    {
       id: "pen",
       name: "画笔",
       key: "P",
@@ -349,6 +360,7 @@
   var width = 4;
   var fillShape = false;
   var selectedId = null;
+  var lassoIds = [];
   var lastTextId = null;
   var histories = {};
   var draft = null;
@@ -1279,7 +1291,13 @@
       lctx.restore();
     }
 
+    if (action && action.kind === "lasso" && action.points.length > 1) {
+      drawLassoTrail(action.points);
+    }
+
     if (selectedId) drawSelection();
+
+    if (lassoIds.length) drawLassoSelection();
 
     if (laser.points.length) drawLaser();
 
@@ -1405,6 +1423,123 @@
     lctx.restore();
   }
 
+  function lassoAccent() {
+    return theme().dark ? "#7cc4ff" : "#2f7fd0";
+  }
+
+  /* 正在拖的套索线：闭合后淡填充，虚线描边，宽度按屏幕像素恒定 */
+  function drawLassoTrail(points) {
+    if (!points || points.length < 2) return;
+    var c = page.cam;
+    var accent = lassoAccent();
+    lctx.save();
+    applyCamera(lctx);
+    lctx.beginPath();
+    lctx.moveTo(points[0].x, points[0].y);
+    for (var i = 1; i < points.length; i++) {
+      lctx.lineTo(points[i].x, points[i].y);
+    }
+    lctx.closePath();
+    lctx.fillStyle = theme().dark ? "rgba(124,196,255,.1)" : "rgba(47,127,208,.08)";
+    lctx.fill();
+    lctx.strokeStyle = accent;
+    lctx.lineWidth = 1.7 / c.scale;
+    lctx.setLineDash([7 / c.scale, 5 / c.scale]);
+    lctx.lineJoin = "round";
+    lctx.stroke();
+    lctx.restore();
+  }
+
+  /* 圈选后的多选状态：把每一笔淡淡描亮，再画一个虚线包围盒和四角小点 */
+  function drawLassoSelection() {
+    var list = lassoObjects();
+    if (!list.length) return;
+    var b = groupBounds(list);
+    var c = page.cam;
+    var accent = lassoAccent();
+    lctx.save();
+
+    lctx.save();
+    applyCamera(lctx);
+    lctx.globalAlpha = 0.34;
+    lctx.strokeStyle = accent;
+    lctx.fillStyle = accent;
+    lctx.lineCap = "round";
+    lctx.lineJoin = "round";
+    for (var i = 0; i < list.length; i++) {
+      drawLassoHighlight(lctx, list[i]);
+    }
+    lctx.restore();
+
+    var pad = 6 / c.scale;
+    var x = (b.x - pad) * c.scale + c.x;
+    var y = (b.y - pad) * c.scale + c.y;
+    var w = (b.w + pad * 2) * c.scale;
+    var h = (b.h + pad * 2) * c.scale;
+    lctx.fillStyle = theme().dark ? "rgba(124,196,255,.07)" : "rgba(47,127,208,.06)";
+    lctx.strokeStyle = accent;
+    lctx.lineWidth = 1.5;
+    lctx.setLineDash([6, 4]);
+    lctx.fillRect(x, y, w, h);
+    lctx.strokeRect(x, y, w, h);
+    lctx.setLineDash([]);
+    lctx.fillStyle = "#fbf6e9";
+    lctx.strokeStyle = accent;
+    lctx.lineWidth = 1.4;
+    var dots = [
+      [x, y],
+      [x + w, y],
+      [x, y + h],
+      [x + w, y + h]
+    ];
+    for (var d = 0; d < dots.length; d++) {
+      lctx.beginPath();
+      lctx.arc(dots[d][0], dots[d][1], 3.2, 0, TAU);
+      lctx.fill();
+      lctx.stroke();
+    }
+    lctx.restore();
+  }
+
+  function drawLassoHighlight(ctx, o) {
+    var w = (o.width || 3) + 4;
+    if (o.type === "pen") {
+      drawStroke(ctx, o.points, w);
+    } else if (o.type === "highlighter") {
+      drawStroke(ctx, o.points, Math.max(8, w + 6));
+    } else if (o.type === "line") {
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.moveTo(o.x1, o.y1);
+      ctx.lineTo(o.x2, o.y2);
+      ctx.stroke();
+    } else if (o.type === "arrow") {
+      ctx.lineWidth = w;
+      drawArrow(ctx, o);
+    } else if (o.type === "rect") {
+      var r = normRect(o);
+      ctx.lineWidth = w;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+    } else if (o.type === "ellipse") {
+      var b = normRect(o);
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.ellipse(
+        b.x + b.w / 2,
+        b.y + b.h / 2,
+        Math.max(0.5, b.w / 2),
+        Math.max(0.5, b.h / 2),
+        0,
+        0,
+        TAU
+      );
+      ctx.stroke();
+    } else {
+      var pb = objectBounds(o);
+      ctx.fillRect(pb.x, pb.y, pb.w, pb.h);
+    }
+  }
+
   function drawLaser() {
     var now = performance.now();
     var pts = laser.points;
@@ -1525,6 +1660,142 @@
       y >= b.y - pad &&
       y <= b.y + b.h + pad
     );
+  }
+
+  /* 圈选：点在多边形内（射线法）。套索本身是自由曲线，按闭合折线处理。 */
+  function pointInPolygon(poly, x, y) {
+    if (!poly || poly.length < 3) return false;
+    var inside = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i].x;
+      var yi = poly[i].y;
+      var xj = poly[j].x;
+      var yj = poly[j].y;
+      if ((yi > y) !== (yj > y)) {
+        var xr = ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+        if (x < xr) inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  /* 给每个对象取一组代表点：笔迹取自己的采样点，线 / 箭头沿线取点，
+     形状和文字 / 图片取包围盒的角点、边中点与中心。 */
+  function lassoSamples(o) {
+    var out = [];
+    if (o.type === "pen" || o.type === "highlighter") {
+      var pts = o.points || [];
+      var step = Math.max(1, Math.ceil(pts.length / 180));
+      for (var i = 0; i < pts.length; i += step) out.push(pts[i]);
+      if (pts.length) out.push(pts[pts.length - 1]);
+      return out;
+    }
+    if (o.type === "line" || o.type === "arrow") {
+      for (var t = 0; t <= 1.0001; t += 0.125) {
+        out.push({
+          x: o.x1 + (o.x2 - o.x1) * t,
+          y: o.y1 + (o.y2 - o.y1) * t
+        });
+      }
+      return out;
+    }
+    var b = objectBounds(o);
+    out.push({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+    out.push(
+      { x: b.x, y: b.y },
+      { x: b.x + b.w, y: b.y },
+      { x: b.x, y: b.y + b.h },
+      { x: b.x + b.w, y: b.y + b.h },
+      { x: b.x + b.w / 2, y: b.y },
+      { x: b.x + b.w / 2, y: b.y + b.h },
+      { x: b.x, y: b.y + b.h / 2 },
+      { x: b.x + b.w, y: b.y + b.h / 2 }
+    );
+    return out;
+  }
+
+  function lassoHitIds(poly) {
+    if (!page) return [];
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    for (var p = 0; p < poly.length; p++) {
+      minX = Math.min(minX, poly[p].x);
+      minY = Math.min(minY, poly[p].y);
+      maxX = Math.max(maxX, poly[p].x);
+      maxY = Math.max(maxY, poly[p].y);
+    }
+    var ids = [];
+    for (var i = 0; i < page.objects.length; i++) {
+      var o = page.objects[i];
+      if (o.type === "eraser") continue;
+      var b = objectBounds(o);
+      if (
+        b.x > maxX ||
+        b.x + b.w < minX ||
+        b.y > maxY ||
+        b.y + b.h < minY
+      ) {
+        continue;
+      }
+      var pts = lassoSamples(o);
+      if (!pts.length) continue;
+      var hit = 0;
+      for (var s = 0; s < pts.length; s++) {
+        if (pointInPolygon(poly, pts[s].x, pts[s].y)) hit++;
+      }
+      var cornersIn =
+        pointInPolygon(poly, b.x, b.y) &&
+        pointInPolygon(poly, b.x + b.w, b.y) &&
+        pointInPolygon(poly, b.x, b.y + b.h) &&
+        pointInPolygon(poly, b.x + b.w, b.y + b.h);
+      // 整块都在圈里，或者一半以上的代表点都在圈里，就算圈中
+      if (cornersIn || hit * 2 >= pts.length) ids.push(o.id);
+    }
+    return ids;
+  }
+
+  function lassoObjects() {
+    if (!page || !lassoIds.length) return [];
+    var want = {};
+    for (var i = 0; i < lassoIds.length; i++) want[lassoIds[i]] = 1;
+    var out = [];
+    for (var j = 0; j < page.objects.length; j++) {
+      var o = page.objects[j];
+      if (want[o.id] && o.type !== "eraser") out.push(o);
+    }
+    if (out.length !== lassoIds.length) {
+      lassoIds = out.map(function (o) {
+        return o.id;
+      });
+    }
+    return out;
+  }
+
+  function clearLasso(redraw) {
+    if (!lassoIds.length) return;
+    lassoIds = [];
+    if (redraw) drawLive();
+  }
+
+  /* 当前选中的对象：圈选返回整组，普通选择返回图片组 / 单个对象。 */
+  function selectedObjectList() {
+    if (lassoIds.length) return lassoObjects();
+    var root = findObject(selectedId);
+    return root ? groupObjects(root) : [];
+  }
+
+  /* 判断点击是否落在圈选组里：点中任意一笔，或点在这组包围盒内，都算。 */
+  function lassoPointHit(x, y) {
+    var list = lassoObjects();
+    if (!list.length) return false;
+    var tol = 5 / page.cam.scale;
+    if (insideRect(groupBounds(list), x, y, tol)) return true;
+    for (var i = 0; i < list.length; i++) {
+      if (nearObject(list[i], x, y, tol)) return true;
+    }
+    return false;
   }
 
   function distToSegment(px, py, x1, y1, x2, y2) {
@@ -1809,6 +2080,7 @@
     page.objects = s.objects || [];
     page.bg = s.bg || "white";
     selectedId = null;
+    clearLasso(false);
     renderChrome();
     drawAll();
     drawLive();
@@ -2642,6 +2914,8 @@
     wheelSizeAcc = 0;
     if (toolWidths[id] != null) width = toolWidths[id];
     if (id !== "select" && id !== "text") lastTextId = null;
+    // V / 选择工具会保留圈选结果，其它工具切换时收起圈选
+    if (id !== "select" && lassoIds.length) clearLasso(false);
     if (id !== "select") {
       selectedId = null;
       drawLive();
@@ -2672,8 +2946,9 @@
   function deactivateActiveTool() {
     if (!page) return;
     if (textState) commitText();
-    var hadSelection = !!selectedId;
+    var hadSelection = !!selectedId || lassoIds.length > 0;
     selectedId = null;
+    clearLasso(false);
     lastTextId = null;
     if (tool !== "select") setTool("select");
     if (hadSelection) {
@@ -2696,7 +2971,7 @@
       b.type = "button";
       b.className = "cwb-tool";
       b.dataset.tool = t.id;
-      b.title = t.name + (t.key ? "（" + t.key + "）" : "");
+      b.title = t.title || (t.name + (t.key ? "（" + t.key + "）" : ""));
       if (SIZE_WHEEL_TOOLS[t.id]) {
         b.title += " · 选中后在画布滚轮调大小 · 右键取消";
       }
@@ -2785,6 +3060,40 @@
       applyTextStyle();
       drawAll();
       drawLive();
+      return true;
+    }
+    if (lassoIds.length) {
+      var lassoList = lassoObjects();
+      var inkTypes = {
+        text: 1,
+        pen: 1,
+        highlighter: 1,
+        line: 1,
+        arrow: 1,
+        rect: 1,
+        ellipse: 1
+      };
+      var targets = [];
+      for (var li = 0; li < lassoList.length; li++) {
+        if (
+          inkTypes[lassoList[li].type] &&
+          String(lassoList[li].color).toLowerCase() !== hex.toLowerCase()
+        ) {
+          targets.push(lassoList[li]);
+        }
+      }
+      if (!targets.length) return false;
+      pushHistory();
+      for (var lj = 0; lj < targets.length; lj++) {
+        var lidx = objectIndex(targets[lj].id);
+        if (lidx < 0) continue;
+        var lc = cloneObject(targets[lj]);
+        lc.color = hex;
+        page.objects[lidx] = lc;
+      }
+      drawAll();
+      drawLive();
+      markDirty();
       return true;
     }
     var target = null;
@@ -3334,6 +3643,7 @@
     pushHistory();
     page.objects = [];
     selectedId = null;
+    clearLasso(false);
     lastTextId = null;
     drawAll();
     drawLive();
@@ -3376,6 +3686,7 @@
         page = activePage();
         histories = {};
         selectedId = null;
+        clearLasso(false);
         lastTextId = null;
         imageCache = {};
         applySettings(doc.settings);
@@ -3507,12 +3818,48 @@
     ) {
       if (tool === "select") {
         selectedId = null;
+        clearLasso(false);
+        drawLive();
+      } else if (tool === "lasso") {
+        clearLasso(false);
         drawLive();
       }
       return;
     }
 
+    if (tool === "lasso") {
+      selectedId = null;
+      lastTextId = null;
+      clearLasso(false);
+      action = {
+        kind: "lasso",
+        points: [{ x: clamp(p.x, 0, boardWidth()), y: Math.max(0, p.y) }]
+      };
+      drawLive();
+      return;
+    }
+
     if (tool === "select") {
+      if (lassoIds.length) {
+        if (lassoPointHit(p.x, p.y)) {
+          var lassoList = lassoObjects();
+          action = {
+            kind: "move",
+            id: "",
+            lasso: true,
+            origGroup: lassoList.map(function (o) {
+              return { index: objectIndex(o.id), obj: o };
+            }),
+            origBounds: groupBounds(lassoList),
+            start: p,
+            moved: false
+          };
+          drawLive();
+          return;
+        }
+        // 点在圈选范围外：先收起圈选，再按普通点击处理
+        clearLasso(false);
+      }
       var selected = findObject(selectedId);
       if (selected && selected.type === "image" && imageHandleHit(selected, sp)) {
         var idx = objectIndex(selected.id);
@@ -3570,7 +3917,13 @@
       }
       var hit = hitTest(p.x, p.y, false);
       if (!hit) {
+        // 选择工具在空白处拖一圈，也能直接圈选；只点一下等于取消选择
         selectedId = null;
+        lastTextId = null;
+        action = {
+          kind: "lasso",
+          points: [{ x: clamp(p.x, 0, boardWidth()), y: Math.max(0, p.y) }]
+        };
         drawLive();
         return;
       }
@@ -3783,6 +4136,80 @@
     markDirty();
   }
 
+  /* 套索是自由手绘线：去掉过密点、首尾重合点和超长尾巴，再按闭合多边形判定 */
+  function lassoPolygon(points) {
+    if (!page) return [];
+    var minD = 2 / page.cam.scale;
+    var out = [];
+    for (var i = 0; i < points.length; i++) {
+      var p = points[i];
+      var last = out[out.length - 1];
+      if (!last || Math.hypot(p.x - last.x, p.y - last.y) >= minD) {
+        out.push({ x: p.x, y: p.y });
+      }
+    }
+    while (out.length > 2) {
+      var a = out[0];
+      var z = out[out.length - 1];
+      if (Math.hypot(a.x - z.x, a.y - z.y) < minD) out.pop();
+      else break;
+    }
+    if (out.length > 400) {
+      var step = out.length / 400;
+      var thinned = [];
+      for (var j = 0; j < out.length; j += step) {
+        thinned.push(out[Math.floor(j)]);
+      }
+      out = thinned;
+    }
+    return out;
+  }
+
+  function finalizeLasso(points) {
+    if (!page) return;
+    var poly = lassoPolygon(points || []);
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    for (var i = 0; i < poly.length; i++) {
+      minX = Math.min(minX, poly[i].x);
+      minY = Math.min(minY, poly[i].y);
+      maxX = Math.max(maxX, poly[i].x);
+      maxY = Math.max(maxY, poly[i].y);
+    }
+    var minSize = 7 / page.cam.scale;
+    if (poly.length < 3 || maxX - minX < minSize || maxY - minY < minSize) {
+      clearLasso(false);
+      drawLive();
+      return;
+    }
+    var ids = lassoHitIds(poly);
+    if (!ids.length) {
+      lassoIds = [];
+      selectedId = null;
+      lastTextId = null;
+      drawLive();
+      showToast("圈内没有画线，重新圈一下");
+      return;
+    }
+    lassoIds = ids;
+    selectedId = null;
+    lastTextId = null;
+    // 圈完直接切到选择工具：V 仍然是同一个工具，拖动即可整体移动
+    setTool("select", true);
+    saveSettings();
+    drawLive();
+    showToast(
+      "已圈选 " + ids.length + " 笔 · 拖动整体移动（V）",
+      "取消",
+      function () {
+        clearLasso(true);
+      },
+      5200
+    );
+  }
+
   function startPinch() {
     var ids = Object.keys(pointers);
     if (ids.length < 2) return;
@@ -3856,6 +4283,29 @@
     }
     if (action.kind === "draw") {
       updateDraft(e);
+      e.preventDefault();
+      return;
+    }
+    if (action.kind === "lasso") {
+      var evs2 = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+      if (!evs2.length) evs2 = [e];
+      var lpts = action.points;
+      var minD = 1.5 / page.cam.scale;
+      for (var li = 0; li < evs2.length; li++) {
+        var lp = worldPoint(evs2[li] || e);
+        lp = {
+          x: clamp(lp.x, 0, boardWidth()),
+          y: Math.max(0, lp.y)
+        };
+        var lastL = lpts[lpts.length - 1];
+        if (
+          lpts.length < 1600 &&
+          (!lastL || Math.hypot(lp.x - lastL.x, lp.y - lastL.y) >= minD)
+        ) {
+          lpts.push(lp);
+        }
+      }
+      drawLive();
       e.preventDefault();
       return;
     }
@@ -4051,6 +4501,11 @@
       if (!cancelled) commitDraft();
       draft = null;
       action = null;
+      drawLive();
+    } else if (kind === "lasso") {
+      var lassoPts = action.points;
+      action = null;
+      if (!cancelled) finalizeLasso(lassoPts);
       drawLive();
     } else if (kind === "pan") {
       action = null;
@@ -4342,10 +4797,8 @@
   }
 
   function deleteSelected() {
-    if (!selectedId) return;
-    var root = findObject(selectedId);
-    if (!root) return;
-    var list = groupObjects(root);
+    var list = selectedObjectList();
+    if (!list.length) return;
     var idxs = [];
     for (var i = 0; i < list.length; i++) {
       var idx = objectIndex(list[i].id);
@@ -4358,6 +4811,7 @@
     });
     for (var j = 0; j < idxs.length; j++) page.objects.splice(idxs[j], 1);
     selectedId = null;
+    clearLasso(false);
     if (lastTextId && list.some(function (o) { return o.id === lastTextId; })) {
       lastTextId = null;
     }
@@ -4367,9 +4821,9 @@
   }
 
   function duplicateSelected() {
-    var root = findObject(selectedId);
-    if (!root) return;
-    var list = groupObjects(root);
+    var list = selectedObjectList();
+    if (!list.length) return;
+    var wasLasso = lassoIds.length > 0;
     pushHistory();
     var idMap = {};
     var copies = list.map(function (o) {
@@ -4384,17 +4838,23 @@
       }
     }
     for (var j = 0; j < copies.length; j++) page.objects.push(copies[j]);
-    selectedId = copies[0].id;
-    if (copies[0].type === "text") lastTextId = copies[0].id;
+    if (wasLasso) {
+      selectedId = null;
+      lassoIds = copies.map(function (o) {
+        return o.id;
+      });
+    } else {
+      selectedId = copies[0].id;
+      if (copies[0].type === "text") lastTextId = copies[0].id;
+    }
     drawAll();
     drawLive();
     markDirty();
   }
 
   function nudgeSelected(dx, dy) {
-    var root = findObject(selectedId);
-    if (!root) return;
-    var list = groupObjects(root);
+    var list = selectedObjectList();
+    if (!list.length) return;
     var b = groupBounds(list);
     var W = boardWidth();
     if (b.w <= W) {
@@ -4541,6 +5001,9 @@
         closePopovers();
       } else if (textState) {
         cancelText();
+      } else if (lassoIds.length) {
+        selectedId = null;
+        clearLasso(true);
       } else if (selectedId) {
         selectedId = null;
         drawLive();
@@ -4598,7 +5061,7 @@
     if (low === "arrowleft" || low === "arrowright" || low === "arrowup" || low === "arrowdown") {
       e.preventDefault();
       e.stopPropagation();
-      if (!selectedId) return;
+      if (!selectedId && !lassoIds.length) return;
       var step = e.shiftKey ? 10 : 1;
       nudgeSelected(
         low === "arrowleft" ? -step : low === "arrowright" ? step : 0,
@@ -4616,6 +5079,9 @@
 
     if (low === "v") {
       setTool("select");
+      handled = true;
+    } else if (low === "c") {
+      setTool("lasso");
       handled = true;
     } else if (low === "p") {
       setTool("pen");
@@ -4850,6 +5316,7 @@
     void root.offsetWidth;
     root.classList.add("is-shown");
     selectedId = null;
+    lassoIds = [];
     draft = null;
     action = null;
     pointers = {};
@@ -5207,6 +5674,10 @@
           width: width,
           selectedId: selectedId,
           selectedType: selectedId && findObject(selectedId) ? findObject(selectedId).type : "",
+          lassoIds: lassoIds.slice(),
+          lassoCount: lassoIds.length,
+          action: action ? action.kind : "",
+          actionPoints: action && action.points ? action.points.length : 0,
           page: page
             ? {
                 id: page.id,
