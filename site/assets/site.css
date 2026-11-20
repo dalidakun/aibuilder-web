@@ -1,4 +1,4 @@
-/* build 2026-11-20i：白板顶栏一体 + 图片清晰度 + API 输入框边框 + 保存状态定宽 */
+/* build 2026-11-20j：白板顶栏一体 + 图片清晰度 + API 输入框边框 + 保存状态定宽 */
 /* ==========================================================================
    燃灯 · 素白清新主题（米黄纸感）
    整站只有一层米黄纸底，卡片/面板再不铺纯白，靠边框和「下沉块」分层；
@@ -1315,7 +1315,7 @@ a:hover {
   top: 0;
   z-index: 60;
   flex: 0 0 auto;
-  height: 45px;
+  height: 39px;
   background: var(--nav-bg);
   border-bottom: 1px solid var(--border-soft);
   transition: height 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
@@ -1325,7 +1325,7 @@ a:hover {
 .topnav__inner {
   max-width: 1600px;
   margin: 0 auto;
-  height: 44px;
+  height: 38px;
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -1421,11 +1421,11 @@ a:hover {
 
 @media (max-width: 720px) {
   .topnav {
-    height: 41px;
+    height: 37px;
   }
 
   .topnav__inner {
-    height: 40px;
+    height: 36px;
     padding: 0 8px;
     gap: 6px;
   }
