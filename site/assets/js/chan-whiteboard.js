@@ -3477,7 +3477,7 @@
     });
   }
 
-  function insertImages(files) {
+  function insertImages(files, preferLower) {
     var list = Array.prototype.slice.call(files || []).filter(function (f) {
       return f && /^image\//.test(f.type || "");
     });
@@ -3486,7 +3486,10 @@
       return;
     }
     list = list.slice(0, 6);
-    var center = worldOfScreen(view.w / 2, view.h / 2);
+    var center = worldOfScreen(
+      view.w / 2,
+      preferLower ? view.h * 0.66 : view.h / 2
+    );
     center.x = clamp(center.x, 0, boardWidth());
     Promise.all(list.map(readImageFile))
       .then(function (imgs) {
@@ -5864,7 +5867,7 @@
       }
       if (files.length) {
         e.preventDefault();
-        insertImages(files);
+        insertImages(files, true);
         return;
       }
       var text = e.clipboardData.getData("text/plain");
