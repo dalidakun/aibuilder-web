@@ -1190,17 +1190,6 @@
     list.forEach(function (item) {
       var card = el("article", "chan-inbox__item");
       card.setAttribute("data-id", item.id);
-      card.addEventListener("click", function (e) {
-        var t = e.target;
-        if (
-          t &&
-          t.closest &&
-          t.closest("button, input, textarea, .chan-inbox__replyform")
-        ) {
-          return;
-        }
-        goToInboxItem(item);
-      });
 
       var who = String(item.name || "匿名读者").replace(/^@+/, "");
       var head = el("div", "chan-inbox__item-head");

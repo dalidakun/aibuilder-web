@@ -592,7 +592,7 @@ body.chan-page {
 .chan-inbox__item {
   padding: 10px 0;
   border-bottom: 1px dashed var(--border-soft);
-  cursor: pointer;
+  cursor: default;
 }
 
 .chan-inbox__item:last-child {
