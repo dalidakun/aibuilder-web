@@ -435,7 +435,7 @@ body.page-trade {
   flex-direction: column;
   gap: 0;
   /* 顶部不留色块：导航栏下边缘直接接走势图工具条 */
-  padding: 0 0 8px;
+  padding: 0;
 }
 
 /* 一整块：左边 K 线，右边下单 + 持仓，高度上下对齐 */
