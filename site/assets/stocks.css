@@ -1114,6 +1114,48 @@ html.stk-root body::-webkit-scrollbar {
   touch-action: none;
 }
 
+.stk-detail__nav {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: rgba(244, 237, 218, 0.92);
+  color: var(--accent-deep);
+  box-shadow: 0 6px 18px rgba(36, 31, 22, 0.16);
+  cursor: pointer;
+}
+
+.stk-detail__nav svg {
+  width: 24px;
+  height: 24px;
+}
+
+.stk-detail__nav--prev {
+  left: 10px;
+}
+
+.stk-detail__nav--next {
+  right: 10px;
+}
+
+.stk-detail__nav:hover:not(:disabled) {
+  background: var(--card);
+  color: var(--accent);
+}
+
+.stk-detail__nav:disabled {
+  opacity: 0.22;
+  cursor: default;
+  box-shadow: none;
+}
+
 .stk-detail__state {
   position: absolute;
   inset: 0;
@@ -1234,6 +1276,16 @@ html.stk-root body::-webkit-scrollbar {
 
   #stkDetailChart {
     height: 280px;
+  }
+
+  .stk-detail__nav {
+    width: 38px;
+    height: 38px;
+  }
+
+  .stk-detail__nav svg {
+    width: 20px;
+    height: 20px;
   }
 
   .stk-detail__fin {

@@ -1541,14 +1541,14 @@
     el.hidden = !text;
   }
 
-  function openStockDetail(code, name, withFin) {
+  function openStockDetail(code, name, withFin, period) {
     var d = state.detail;
     code = String(code || '');
     if (!code) return;
     var showFin = withFin !== false;
     d.code = code;
     d.name = name || code;
-    d.period = '60';
+    d.period = period || '60';
     d.bars = [];
     d.hover = -1;
     d.geom = null;
@@ -1559,10 +1559,11 @@
 
     $('stkDetailTitle').textContent = d.name + '  ' + code;
     $$('#stkDetailPeriods button').forEach(function (b) {
-      b.classList.toggle('is-on', b.dataset.period === '60');
+      b.classList.toggle('is-on', b.dataset.period === d.period);
     });
     var legend = $('stkDetailLegend');
     if (legend) legend.innerHTML = '';
+    updateDetailNav();
     $('stkDetailFinWrap').hidden = !showFin;
     var card = document.querySelector('.stk-detail__card');
     if (card) card.classList.toggle('is-chart-only', !showFin);
@@ -1579,8 +1580,40 @@
     selectStockRow(state.tab, code);
     closeCompareMenu();
     closePeriodMenus();
-    loadDetailChart('60');
+    loadDetailChart(d.period);
     if (showFin) loadDetailFin(code);
+  }
+
+  function detailNavRows() {
+    var body = state.tab === 'pool' ? $('stkStockBody') : $('stkCompareBody');
+    if (!body) return [];
+    return $$('tr[data-code]', body).map(function (tr) {
+      return { code: String(tr.dataset.code || ''), name: tr.dataset.name || '' };
+    }).filter(function (r) { return r.code; });
+  }
+
+  function updateDetailNav() {
+    var rows = detailNavRows();
+    var idx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].code === state.detail.code) { idx = i; break; }
+    }
+    var prev = $('stkDetailPrev');
+    var next = $('stkDetailNext');
+    if (prev) prev.disabled = idx <= 0;
+    if (next) next.disabled = idx < 0 || idx >= rows.length - 1;
+  }
+
+  function navigateDetail(delta) {
+    var d = state.detail;
+    var rows = detailNavRows();
+    var idx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].code === d.code) { idx = i; break; }
+    }
+    var target = idx >= 0 ? rows[idx + delta] : null;
+    if (!target) return;
+    openStockDetail(target.code, target.name, d.showFin, d.period);
   }
 
   function closeStockDetail() {
@@ -2653,6 +2686,8 @@
     $$('#stkDetailPeriods button').forEach(function (b) {
       b.addEventListener('click', function () { setDetailPeriod(b.dataset.period); });
     });
+    $('stkDetailPrev').addEventListener('click', function () { navigateDetail(-1); });
+    $('stkDetailNext').addEventListener('click', function () { navigateDetail(1); });
     $('stkDetailChart').addEventListener('pointerdown', function (e) {
       var d = state.detail;
       if (!d.bars.length || (e.button != null && e.button !== 0)) return;
@@ -2706,7 +2741,11 @@
       if (!$('stkDetailModal').hidden) drawDetailChart();
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && !$('stkDetailModal').hidden) closeStockDetail();
+      if (!$('stkDetailModal').hidden) {
+        if (e.key === 'Escape') closeStockDetail();
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); navigateDetail(-1); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); navigateDetail(1); }
+      }
     });
 
     $('stkApiBtn').addEventListener('click', openKeyModal);
