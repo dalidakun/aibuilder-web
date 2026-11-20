@@ -3946,6 +3946,34 @@
       return;
     }
 
+    // 直线 / 箭头端点在任意工具下都能直接拖；不必先切回选择工具
+    var handleObj = findObject(selectedId);
+    if (!handleObj || (handleObj.type !== "line" && handleObj.type !== "arrow")) {
+      var maybeLine = hitTest(p.x, p.y, false);
+      if (maybeLine && (maybeLine.type === "line" || maybeLine.type === "arrow")) {
+        handleObj = maybeLine;
+      }
+    }
+    if (handleObj && (handleObj.type === "line" || handleObj.type === "arrow")) {
+      var handleEnd = lineHandleAt(handleObj, sp);
+      if (handleEnd) {
+        selectedId = handleObj.id;
+        lassoIds = [];
+        action = {
+          kind: "resize-line",
+          id: handleObj.id,
+          index: objectIndex(handleObj.id),
+          orig: cloneObject(handleObj),
+          start: p,
+          end: handleEnd,
+          moved: false
+        };
+        drawAll();
+        drawLive();
+        return;
+      }
+    }
+
     if (tool === "select") {
       if (lassoIds.length) {
         if (lassoPointHit(p.x, p.y)) {
@@ -3968,21 +3996,6 @@
         clearLasso(false);
       }
       var selected = findObject(selectedId);
-      if (selected && (selected.type === "line" || selected.type === "arrow")) {
-        var end = lineHandleAt(selected, sp);
-        if (end) {
-          action = {
-            kind: "resize-line",
-            id: selected.id,
-            index: objectIndex(selected.id),
-            orig: cloneObject(selected),
-            start: p,
-            end: end,
-            moved: false
-          };
-          return;
-        }
-      }
       if (selected && selected.type === "image" && imageHandleHit(selected, sp)) {
         var idx = objectIndex(selected.id);
         var resizeGroup = groupObjects(selected);
@@ -5023,7 +5036,7 @@
     if (!image || image.type !== "image") return;
     imageClipboard = {
       rootId: image.id,
-      objects: groupObjects(image).map(cloneObject)
+      objects: [cloneObject(image)]
     };
     showToast("已复制图片，在目标位置右键选择「粘贴图片」");
   }
