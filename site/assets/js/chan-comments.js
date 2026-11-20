@@ -1099,22 +1099,13 @@
     if (inboxFetching) return;
     inboxFetching = true;
     api(
-      "getChanAdminInbox",
+      "getChanMessageInbox",
       { clientId: clientId, clientSecret: secret },
       40000
     )
       .then(function (j) {
         inboxItems = (j && j.items) || [];
-        var seen = inboxSeen();
-        setAdminBadge(
-          inboxItems.filter(function (it) {
-            return (Number(it.createdAt) || 0) > seen;
-          }).length
-        );
-        if (inboxEl && !inboxEl.hidden) {
-          renderInbox();
-          markInboxRead();
-        }
+        if (inboxEl && !inboxEl.hidden) renderInbox();
       })
       .catch(function (e) {
         if (inboxEl && !inboxEl.hidden) toast(errorText(e));
@@ -1150,7 +1141,6 @@
   function openInbox() {
     ensureInbox();
     if (!inboxEl) return;
-    inboxCutoff = inboxSeen();
     inboxEl.hidden = false;
     inboxList.innerHTML = "";
     inboxList.appendChild(el("p", "chan-inbox__empty", "正在加载消息…"));
@@ -1192,11 +1182,9 @@
   function renderInbox() {
     if (!inboxList) return;
     inboxList.innerHTML = "";
-    var list = inboxItems.filter(function (it) {
-      return (Number(it.createdAt) || 0) > inboxCutoff;
-    });
+    var list = inboxItems.slice();
     if (!list.length) {
-      inboxList.appendChild(el("p", "chan-inbox__empty", "暂无新消息"));
+      inboxList.appendChild(el("p", "chan-inbox__empty", "暂无待处理消息"));
       return;
     }
     list.forEach(function (item) {
@@ -1262,6 +1250,12 @@
       }
 
       var acts = el("div", "chan-inbox__acts");
+      var mark = el("button", "", "标记已读");
+      mark.type = "button";
+      mark.addEventListener("click", function (e) {
+        e.stopPropagation();
+        markInboxItemRead(item, mark);
+      });
       var reply = el("button", "", "回复");
       reply.type = "button";
       reply.addEventListener("click", function (e) {
@@ -1274,6 +1268,7 @@
         e.stopPropagation();
         goToInboxItem(item);
       });
+      acts.appendChild(mark);
       acts.appendChild(reply);
       acts.appendChild(open);
       main.appendChild(acts);
@@ -1281,6 +1276,42 @@
       card.appendChild(main);
       inboxList.appendChild(card);
     });
+  }
+
+  function notifyInboxChanged() {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "chan-inbox-changed" }, location.origin);
+      }
+    } catch (e) {}
+  }
+
+  function markInboxItemRead(item, btn) {
+    if (!item) return;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "标记中…";
+    }
+    api(
+      "markChanInboxRead",
+      { clientId: clientId, clientSecret: secret, messageId: item.id },
+      30000
+    )
+      .then(function () {
+        inboxItems = inboxItems.filter(function (x) {
+          return x.id !== item.id;
+        });
+        renderInbox();
+        notifyInboxChanged();
+        toast("已标记已读");
+      })
+      .catch(function (e) {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "标记已读";
+        }
+        toast(errorText(e));
+      });
   }
 
   function openInboxReply(card, item) {
@@ -1337,6 +1368,7 @@
           form.remove();
           inboxReplyOpen = null;
           if (item.lessonNo === lessonNo) reload();
+          notifyInboxChanged();
           fetchInbox();
         })
         .catch(function (e) {
@@ -1368,7 +1400,8 @@
   });
 
   (function init() {
-    window.ChanAdminInbox = { open: openInbox };
+    window.ChanInbox = { open: openInbox };
+    window.ChanAdminInbox = window.ChanInbox;
     var sec = activeSection();
     if (!sec) return;
     lessonNo = Number(sec.getAttribute("data-no")) || 1;

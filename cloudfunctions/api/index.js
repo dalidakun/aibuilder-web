@@ -626,6 +626,8 @@ exports.main = async (event, context) => {
   const chanAdmins = db.collection("chanAdmins");
   // 评论头像：_id = clientId，存用户自己上传的头像（data URL）。
   const chanProfiles = db.collection("chanProfiles");
+  // 用户/管理员手动标记已读的消息；按 clientId + messageId 去重。
+  const chanInboxReads = db.collection("chanInboxReads");
   const topicBans = db.collection("topicBans");
   // AI 译文缓存：同一段经文只生成一次，之后所有用户直接复用，避免重复计费。
   const aiTranslations = db.collection("aiTranslations");
@@ -1380,6 +1382,12 @@ exports.main = async (event, context) => {
   async function ensureChanProfiles() {
     try {
       await db.createCollection("chanProfiles");
+    } catch (e) {}
+  }
+
+  async function ensureChanInboxReads() {
+    try {
+      await db.createCollection("chanInboxReads");
     } catch (e) {}
   }
 
@@ -4114,21 +4122,49 @@ exports.main = async (event, context) => {
         return ok({ comments, total, admin, profiles });
       }
 
-      case "getChanAdminInbox": {
+      case "getChanMessageInbox": {
         const clientId = String(event.clientId || "").trim().slice(0, 64);
         const secret = String(event.clientSecret || "").trim().slice(0, 128);
+        if (!clientId) return fail("bad_request");
         const admin = await isChanAdmin(clientId, secret);
-        if (!admin) return fail("forbidden");
         await ensureChanComments();
+        await ensureChanInboxReads();
         let rows = [];
+        let readRows = [];
         try {
-          const res = await chanComments.limit(1000).get();
+          const [res, reads] = await Promise.all([
+            chanComments.limit(1000).get(),
+            chanInboxReads.where({ clientId }).limit(1000).get(),
+          ]);
           rows = res.data || [];
+          readRows = reads.data || [];
         } catch (e) {
           return fail("inbox_unavailable");
         }
+        const readSet = new Set(
+          readRows.map((r) => String(r.messageId || "")).filter(Boolean)
+        );
+        const myByRoot = {};
+        const repliedSet = new Set();
+        for (const d of rows) {
+          if (!d || d.deleted || d.clientId !== clientId) continue;
+          const root = d.rootId || d._id;
+          const at = Number(d.createdAt) || 0;
+          if (!myByRoot[root] || at < myByRoot[root]) myByRoot[root] = at;
+          if (d.parentId) repliedSet.add(String(d.parentId));
+        }
         const items = rows
-          .filter((d) => d && !d.deleted && d.clientId !== clientId)
+          .filter((d) => {
+            if (!d || d.deleted || d.clientId === clientId) return false;
+            if (readSet.has(String(d._id))) return false;
+            if (repliedSet.has(String(d._id))) return false;
+            if (!admin) {
+              const root = d.rootId || d._id;
+              const since = myByRoot[root];
+              if (!since || (Number(d.createdAt) || 0) <= since) return false;
+            }
+            return true;
+          })
           .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
           .slice(0, 80)
           .map((d) => {
@@ -4153,7 +4189,31 @@ exports.main = async (event, context) => {
               clientId: d.clientId || "",
             };
           });
-        return ok({ items });
+        return ok({ items, admin });
+      }
+
+      case "markChanInboxRead": {
+        const clientId = String(event.clientId || "").trim().slice(0, 64);
+        const secret = String(event.clientSecret || "").trim().slice(0, 128);
+        const messageId = String(event.messageId || "").trim().slice(0, 128);
+        if (!clientId || !secret || !messageId) return fail("bad_request");
+        await ensureChanInboxReads();
+        try {
+          const exists = await chanInboxReads
+            .where({ clientId, messageId })
+            .limit(1)
+            .get();
+          if (!(exists.data && exists.data.length)) {
+            await chanInboxReads.add({
+              clientId,
+              messageId,
+              at: now(),
+            });
+          }
+        } catch (e) {
+          return fail("inbox_unavailable");
+        }
+        return ok({ read: true });
       }
 
       case "createChanComment": {

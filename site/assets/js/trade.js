@@ -2295,7 +2295,6 @@
     loadTradeAvatar(false);
   }
 
-  var CHAN_MSG_SEEN = 'chan:admin:inboxSeen';
   var chanMsgTimer = 0;
   var chanMsgBusy = false;
 
@@ -2303,15 +2302,6 @@
     var id = readLS('chan:anno:id');
     var secret = readLS('chan:anno:secret');
     return id && secret ? { clientId: id, clientSecret: secret } : null;
-  }
-
-  function chanMsgSeen() {
-    var n = Number(readLS(CHAN_MSG_SEEN));
-    if (!n) {
-      n = Date.now();
-      writeLS(CHAN_MSG_SEEN, String(n));
-    }
-    return n;
   }
 
   function setChanMessageBadge(n) {
@@ -2335,14 +2325,10 @@
     }
     if (chanMsgBusy) return;
     chanMsgBusy = true;
-    api('getChanAdminInbox', creds).then(function (j) {
+    api('getChanMessageInbox', creds).then(function (j) {
       var items = (j && j.items) || [];
-      var seen = chanMsgSeen();
-      var unread = items.filter(function (it) {
-        return (Number(it.createdAt) || 0) > seen;
-      }).length;
       if (item) item.hidden = false;
-      setChanMessageBadge(unread);
+      setChanMessageBadge(items.length);
     }).catch(function () {
       if (item) item.hidden = true;
       setChanMessageBadge(0);
@@ -2357,8 +2343,8 @@
       toast('当前浏览器还没有读书会身份');
       return;
     }
-    setChanMessageBadge(0);
-    setPane(1, true);    var frame = $('chanFrame');
+    setPane(1, true);
+    var frame = $('chanFrame');
     var tries = 0;
     function tryOpen() {
       if (!frame) {
@@ -2367,8 +2353,9 @@
       }
       try {
         var w = frame.contentWindow;
-        if (w && w.ChanAdminInbox && typeof w.ChanAdminInbox.open === 'function') {
-          w.ChanAdminInbox.open();
+        var box = w && (w.ChanInbox || w.ChanAdminInbox);
+        if (box && typeof box.open === 'function') {
+          box.open();
           return;
         }
       } catch (e) {}
@@ -2382,6 +2369,11 @@
   function startChanMessagePolling() {
     refreshChanMessages();
     if (!chanMsgTimer) chanMsgTimer = window.setInterval(refreshChanMessages, 25000);
+    window.addEventListener('message', function (e) {
+      if (e && e.data && e.data.type === 'chan-inbox-changed') {
+        refreshChanMessages();
+      }
+    });
   }
 
   // ---------------------------------------------------------------- 图表
