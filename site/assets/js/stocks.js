@@ -65,7 +65,7 @@
     ctxCode: '',
     sideCollapsed: false,
     stockSel: { pool: '', compare: '' },
-    detail: { code: '', name: '', period: '60', bars: [], token: 0, finToken: 0, hover: -1, geom: null },
+    detail: { code: '', name: '', period: '60', bars: [], token: 0, finToken: 0, hover: -1, geom: null, panEnd: 0 },
     pool: { code: '', period: '', rows: [], ts: 0, token: 0, loading: false, sort: { col: 'dev', desc: true } },
     compare: { code: '', rows: [], ts: 0, token: 0, loading: false },
   };
@@ -1552,15 +1552,17 @@
     d.bars = [];
     d.hover = -1;
     d.geom = null;
+    d.panEnd = 0;
     d.showFin = showFin;
     d.token += 1;
     d.finToken += 1;
 
     $('stkDetailTitle').textContent = d.name + '  ' + code;
-    $('stkDetailSub').textContent = '1 小时 · 不复权';
     $$('#stkDetailPeriods button').forEach(function (b) {
       b.classList.toggle('is-on', b.dataset.period === '60');
     });
+    var legend = $('stkDetailLegend');
+    if (legend) legend.innerHTML = '';
     $('stkDetailFinWrap').hidden = !showFin;
     var card = document.querySelector('.stk-detail__card');
     if (card) card.classList.toggle('is-chart-only', !showFin);
@@ -1590,6 +1592,7 @@
     state.detail.bars = [];
     state.detail.hover = -1;
     state.detail.geom = null;
+    state.detail.panEnd = 0;
   }
 
   async function loadDetailChart(period) {
@@ -1597,6 +1600,9 @@
     var my = ++d.token;
     d.period = period;
     d.hover = -1;
+    d.panEnd = 0;
+    var legend = $('stkDetailLegend');
+    if (legend) legend.innerHTML = '';
     setDetailChartState('加载中…');
     try {
       var bars = await fetchStockBars(d.code, period);
@@ -1604,11 +1610,14 @@
       if (!bars.length) throw new Error('没有取到 K 线数据');
       d.bars = bars;
       d.geom = null;
+      d.panEnd = bars.length;
       setDetailChartState('');
+      renderDetailLegend();
       drawDetailChart();
     } catch (e) {
       if (my !== d.token) return;
       d.bars = [];
+      if (legend) legend.innerHTML = '';
       setDetailChartState('走势图加载失败：' + e.message, true);
     }
   }
@@ -1630,12 +1639,41 @@
     var d = state.detail;
     if (d.period === period || !d.code) return;
     d.period = period;
-    $('stkDetailSub').textContent = period === '60' ? '1 小时 · 不复权'
-      : (period === 'd' ? '日线 · 不复权' : '周线 · 不复权');
     $$('#stkDetailPeriods button').forEach(function (b) {
       b.classList.toggle('is-on', b.dataset.period === period);
     });
     loadDetailChart(period);
+  }
+
+  function detailMaxBars(period) {
+    return period === '60' ? 240 : 200;
+  }
+
+  function detailMa(closes, n) {
+    var vals = maSeries(closes, n);
+    return vals.length ? vals[vals.length - 1] : null;
+  }
+
+  function renderDetailLegend() {
+    var d = state.detail;
+    var host = $('stkDetailLegend');
+    if (!host) return;
+    if (!d.bars.length) {
+      host.innerHTML = '';
+      return;
+    }
+    var last = d.bars[d.bars.length - 1];
+    var prev = d.bars.length > 1 ? d.bars[d.bars.length - 2] : last;
+    var chg = prev.c ? (last.c / prev.c - 1) * 100 : 0;
+    var closes = d.bars.map(function (b) { return b.c; });
+    var html = '<span class="' + (chg >= 0 ? 'is-up' : 'is-down') + '">收 <b>' +
+      fmtPrice(last.c) + '</b> ' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span>';
+    [5, 10, 250].forEach(function (k) {
+      var v = detailMa(closes, k);
+      html += '<span class="ma" style="color:' + (k === 5 ? '#e8912d' : (k === 10 ? '#3565d6' : '#8a94a6')) +
+        '">MA' + k + ' <b>' + (isNum(v) ? v.toFixed(2) : '—') + '</b></span>';
+    });
+    host.innerHTML = html;
   }
 
   function maSeries(closes, n) {
@@ -1672,9 +1710,13 @@
     ctx.clearRect(0, 0, W, H);
 
     var all = d.bars;
-    var maxBars = d.period === '60' ? 320 : (d.period === 'd' ? 240 : 260);
-    var start = Math.max(0, all.length - maxBars);
-    var view = all.slice(start);
+    var maxBars = detailMaxBars(d.period);
+    var total = all.length;
+    var end = Math.min(total, d.panEnd || total);
+    var start = Math.max(0, end - maxBars);
+    end = Math.min(total, start + maxBars);
+    d.panEnd = end;
+    var view = all.slice(start, end);
     var n = view.length;
     if (n < 2) return;
 
@@ -1686,7 +1728,7 @@
     var maAll = {};
     maSpecs.forEach(function (k) { maAll[k] = maSeries(closes, k).slice(start); });
 
-    var left = 10, right = W - 56, top = 28, bottom = H - 20;
+    var left = 10, right = W - 56, top = 10, bottom = H - 20;
     var volH = Math.min(54, Math.max(34, H * 0.15));
     var volBottom = bottom;
     var volTop = volBottom - volH;
@@ -1769,24 +1811,6 @@
       if (started) ctx.stroke();
     });
 
-    var last = view[n - 1];
-    var prev = n > 1 ? view[n - 2] : last;
-    var chg = prev.c ? (last.c / prev.c - 1) * 100 : 0;
-    ctx.textAlign = 'left';
-    ctx.font = '600 12px -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif';
-    ctx.fillStyle = chg >= 0 ? UP : DOWN;
-    var head = '收 ' + fmtPrice(last.c) + '  ' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
-    ctx.fillText(head, left, 15);
-    ctx.font = '11px -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif';
-    var lx = left + ctx.measureText(head).width + 16;
-    maSpecs.forEach(function (k) {
-      var v = maAll[k][n - 1];
-      var txt = 'MA' + k + ' ' + (isNum(v) ? v.toFixed(2) : '—');
-      ctx.fillStyle = MA_COLORS[k];
-      ctx.fillText(txt, lx, 15);
-      lx += ctx.measureText(txt).width + 10;
-    });
-
     var steps = Math.min(5, n - 1);
     ctx.fillStyle = AXIS;
     ctx.font = '10.5px -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif';
@@ -1798,7 +1822,7 @@
       ctx.fillText(label, tx, H - 5);
     }
 
-    d.geom = { left: left, right: right, top: priceTop, bottom: priceBottom, volTop: volTop, volBottom: volBottom, barW: barW, start: start, view: view };
+    d.geom = { left: left, right: right, top: priceTop, bottom: priceBottom, volTop: volTop, volBottom: volBottom, barW: barW, start: start, end: end, view: view };
 
     if (d.hover >= 0 && d.hover < n) {
       var i = d.hover;
@@ -2621,6 +2645,7 @@
     window.addEventListener('resize', closeCompareMenu);
 
     /* 个股走势 / 5 年数据弹窗 */
+    var detailDrag = null;
     $('stkDetailClose').addEventListener('click', closeStockDetail);
     $('stkDetailModal').addEventListener('click', function (e) {
       if (e.target === $('stkDetailModal')) closeStockDetail();
@@ -2628,7 +2653,37 @@
     $$('#stkDetailPeriods button').forEach(function (b) {
       b.addEventListener('click', function () { setDetailPeriod(b.dataset.period); });
     });
+    $('stkDetailChart').addEventListener('pointerdown', function (e) {
+      var d = state.detail;
+      if (!d.bars.length || (e.button != null && e.button !== 0)) return;
+      detailDrag = { x: e.clientX, end: d.panEnd || d.bars.length };
+      this.classList.add('is-dragging');
+      try { this.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+    $('stkDetailChart').addEventListener('pointermove', function (e) {
+      if (!detailDrag) return;
+      var d = state.detail;
+      var g = d.geom;
+      if (!g || !g.barW) return;
+      var maxBars = detailMaxBars(d.period);
+      var total = d.bars.length;
+      var end = detailDrag.end - Math.round((e.clientX - detailDrag.x) / g.barW);
+      d.panEnd = Math.max(Math.min(total, maxBars), Math.min(total, end));
+      d.hover = -1;
+      drawDetailChart();
+      e.preventDefault();
+    });
+    function endDetailDrag(e) {
+      if (!detailDrag) return;
+      detailDrag = null;
+      $('stkDetailChart').classList.remove('is-dragging');
+      try { $('stkDetailChart').releasePointerCapture(e.pointerId); } catch (err) {}
+    }
+    $('stkDetailChart').addEventListener('pointerup', endDetailDrag);
+    $('stkDetailChart').addEventListener('pointercancel', endDetailDrag);
     $('stkDetailChart').addEventListener('mousemove', function (e) {
+      if (detailDrag) return;
       var d = state.detail;
       var g = d.geom;
       if (!g) return;

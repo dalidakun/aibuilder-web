@@ -1017,10 +1017,10 @@ html.stk-root body::-webkit-scrollbar {
 
 .stk-detail__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px 6px;
+  padding: 12px 18px 0;
 }
 
 .stk-detail__titles {
@@ -1034,17 +1034,11 @@ html.stk-root body::-webkit-scrollbar {
   line-height: 1.4;
 }
 
-.stk-detail__sub {
-  margin: 2px 0 0;
-  color: var(--text-hint);
-  font-size: 12px;
-}
-
 .stk-detail__periods {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 18px 10px;
+  padding: 5px 18px 8px;
 }
 
 .stk-detail__periods button {
@@ -1069,10 +1063,33 @@ html.stk-root body::-webkit-scrollbar {
   font-weight: 600;
 }
 
-.stk-detail__hint {
+.stk-detail__legend {
+  min-width: 0;
   margin-left: auto;
-  color: var(--text-hint);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  overflow: hidden;
+  color: var(--text-sec);
   font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stk-detail__legend b {
+  font-weight: 600;
+}
+
+.stk-detail__legend .is-up {
+  color: var(--stk-up);
+}
+
+.stk-detail__legend .is-down {
+  color: var(--stk-down);
+}
+
+.stk-detail__legend .ma {
+  font-weight: 500;
 }
 
 .stk-detail__chartwrap {
@@ -1087,7 +1104,14 @@ html.stk-root body::-webkit-scrollbar {
   display: block;
   width: 100%;
   height: 360px;
-  cursor: crosshair;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+#stkDetailChart.is-dragging {
+  cursor: grabbing;
+  touch-action: none;
 }
 
 .stk-detail__state {
@@ -1190,6 +1214,18 @@ html.stk-root body::-webkit-scrollbar {
   .stk-detail__periods {
     padding-left: 12px;
     padding-right: 12px;
+  }
+
+  .stk-detail__periods {
+    flex-wrap: wrap;
+  }
+
+  .stk-detail__legend {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+    gap: 7px;
+    font-size: 10.5px;
   }
 
   .stk-detail__chartwrap {
