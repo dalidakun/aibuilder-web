@@ -544,6 +544,19 @@ html.cwb-open .cwb-launch {
   color: var(--cwb-hint);
 }
 
+.cwb-imagemenu {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  z-index: 80;
+  min-width: 148px;
+  transform-origin: top left;
+}
+
+.cwb-imagemenu button[hidden] {
+  display: none;
+}
+
 /* 身体：左工具栏 + 画布 */
 
 .cwb-body {

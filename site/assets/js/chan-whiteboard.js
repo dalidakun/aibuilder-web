@@ -33,6 +33,7 @@
     saved: byId("cwbSaved"),
     fileBtn: byId("cwbFileBtn"),
     fileMenu: byId("cwbFileMenu"),
+    imageMenu: byId("cwbImageMenu"),
     helpBtn: byId("cwbHelpBtn"),
     help: byId("cwbHelp"),
     helpClose: byId("cwbHelpClose"),
@@ -380,6 +381,8 @@
   var titleEditing = false;
   var closeTimer = 0;
   var imageCache = {};
+  var imageClipboard = null;
+  var imageMenuAt = null;
   var view = { w: 0, h: 0, dpr: 1 };
   var resizeRaf = 0;
 
@@ -4942,6 +4945,66 @@
     markDirty();
   }
 
+  function closeImageMenu() {
+    if (el.imageMenu) el.imageMenu.hidden = true;
+    imageMenuAt = null;
+  }
+
+  function openImageMenu(x, y, image) {
+    var menu = el.imageMenu;
+    if (!menu) return;
+    var copy = menu.querySelector('[data-image-act="copy"]');
+    var paste = menu.querySelector('[data-image-act="paste"]');
+    var del = menu.querySelector('[data-image-act="delete"]');
+    if (copy) copy.hidden = !image;
+    if (del) del.hidden = !image;
+    if (paste) paste.hidden = !!image || !imageClipboard;
+    if (!image && !imageClipboard) return;
+    menu.hidden = false;
+    menu.style.left = "0px";
+    menu.style.top = "0px";
+    var r = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + "px";
+    menu.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + "px";
+  }
+
+  function copyImageObject(image) {
+    if (!image || image.type !== "image") return;
+    imageClipboard = {
+      rootId: image.id,
+      objects: groupObjects(image).map(cloneObject)
+    };
+    showToast("已复制图片，在目标位置右键选择「粘贴图片」");
+  }
+
+  function pasteImageAt(p) {
+    if (!imageClipboard || !imageClipboard.objects.length || !p) return;
+    var source = imageClipboard.objects.map(cloneObject);
+    var b = groupBounds(source);
+    var W = boardWidth();
+    var x = clamp(p.x - b.w / 2, 0, Math.max(0, W - b.w));
+    var y = Math.max(0, p.y - b.h / 2);
+    var dx = x - b.x;
+    var dy = y - b.y;
+    var idMap = {};
+    source.forEach(function (o) { idMap[o.id] = uid(); });
+    var copies = source.map(function (o) {
+      var c = translateObject(o, dx, dy);
+      c.id = idMap[o.id];
+      if (c.parentId) c.parentId = idMap[c.parentId] || c.parentId;
+      return c;
+    });
+    pushHistory();
+    for (var i = 0; i < copies.length; i++) page.objects.push(copies[i]);
+    selectedId = idMap[imageClipboard.rootId] || copies[0].id;
+    lassoIds = [];
+    setTool("select");
+    drawAll();
+    drawLive();
+    markDirty();
+    showToast("图片已粘贴");
+  }
+
   function nudgeSelected(dx, dy) {
     var list = selectedObjectList();
     if (!list.length) return;
@@ -5229,6 +5292,7 @@
       if (pairs[i][1]) pairs[i][1].setAttribute("aria-expanded", "false");
     }
     closeSizeMenu();
+    if (el.imageMenu) el.imageMenu.hidden = true;
   }
 
   function togglePopover(menu, btn) {
@@ -5537,6 +5601,25 @@
       } else if (act === "clear-page") clearPage();
     });
 
+    if (el.imageMenu) {
+      el.imageMenu.addEventListener("click", function (e) {
+        var b = e.target.closest ? e.target.closest("[data-image-act]") : null;
+        if (!b) return;
+        var act = b.dataset.imageAct;
+        if (act === "copy") {
+          copyImageObject(findObject(selectedId));
+          closeImageMenu();
+        } else if (act === "paste") {
+          var at = imageMenuAt;
+          closeImageMenu();
+          pasteImageAt(at);
+        } else if (act === "delete") {
+          closeImageMenu();
+          deleteSelected();
+        }
+      });
+    }
+
     el.title.addEventListener("click", startRename);
     el.titleInput.addEventListener("blur", function () {
       if (titleEditing) finishRename(true);
@@ -5644,6 +5727,24 @@
       if (placingGap) {
         cancelGapPlacement();
         hideToast();
+        return;
+      }
+      var p = worldPoint(e);
+      var img = imageAt(p.x, p.y);
+      closePopovers();
+      if (img) {
+        selectedId = img.id;
+        lassoIds = [];
+        setTool("select");
+        drawAll();
+        drawLive();
+        imageMenuAt = { x: p.x, y: p.y };
+        openImageMenu(e.clientX, e.clientY, img);
+        return;
+      }
+      if (imageClipboard) {
+        imageMenuAt = { x: p.x, y: p.y };
+        openImageMenu(e.clientX, e.clientY, null);
         return;
       }
       deactivateActiveTool();
