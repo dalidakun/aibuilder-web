@@ -1819,7 +1819,7 @@
     var maAll = {};
     maSpecs.forEach(function (k) { maAll[k] = maSeries(closes, k).slice(start); });
 
-    var left = 10, right = W - 56, top = 24, bottom = H - 20;
+    var left = 10, right = W - 56, top = 10, bottom = H - 20;
     var volH = Math.min(54, Math.max(34, H * 0.15));
     var volBottom = bottom;
     var volTop = volBottom - volH;
