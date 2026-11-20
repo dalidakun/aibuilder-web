@@ -1052,7 +1052,7 @@ body.page-trade {
   z-index: 6;
   width: 122px;
   max-width: calc(100% - 20px);
-  padding: 2px 4px;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 251, 242, 0.97);
@@ -1061,6 +1061,7 @@ body.page-trade {
   user-select: none;
   touch-action: none;
   cursor: grab;
+  overflow: hidden;
 }
 
 .chart-poscard.is-drag {
@@ -1078,9 +1079,10 @@ body.page-trade {
 
 .chart-poscard__row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 3px;
-  padding: 0 1px;
+  min-height: 24px;
+  padding: 0 0 0 5px;
   border-top: 1px solid var(--line);
 }
 
@@ -1092,6 +1094,7 @@ body.page-trade {
   flex: 0 0 auto;
   width: 16px;
   height: 16px;
+  align-self: center;
   display: grid;
   place-items: center;
   border-radius: 4px;
@@ -1111,12 +1114,13 @@ body.page-trade {
 .chart-poscard__pct {
   flex: 1 1 auto;
   min-width: 0;
+  align-self: center;
   overflow: hidden;
   color: var(--text-sec);
   font-size: 10.5px;
   font-weight: 700;
   line-height: 1.1;
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
@@ -1132,25 +1136,34 @@ body.page-trade {
 
 .chart-poscard__close {
   flex: 0 0 auto;
-  height: 22px;
-  padding: 0 5px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--card);
-  color: var(--text);
+  align-self: stretch;
+  min-width: 35px;
+  height: auto;
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 0;
+  background: #111;
+  color: #fff;
   font: inherit;
   font-size: 10px;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
 }
 
 .chart-poscard__close:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent-deep);
+  background: #000;
+  color: #fff;
+}
+
+.chart-poscard__close:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -3px;
 }
 
 .chart-poscard__close:disabled {
-  opacity: 0.45;
+  opacity: 0.55;
   cursor: default;
 }
 
