@@ -7224,6 +7224,15 @@
       if (document.visibilityState === 'hidden') cloudDrawFlush();
     });
 
+    // 点空白处关掉浮层；手机长按弹层后，触摸外部也要立即收起
+    document.addEventListener('pointerdown', function (e) {
+      var t = e.target;
+      if (t && t.closest && (t.closest('#ctxMenu') || t.closest('#lineMenu'))) return;
+      var ctx = $('ctxMenu');
+      var line = $('lineMenu');
+      if ((ctx && !ctx.hidden) || (line && !line.hidden)) closeMenus();
+    }, true);
+
     // 点空白处关掉浮层；点工具条按钮本身不关（否则刚开就被关）
     document.addEventListener('click', function (e) {
       var t = e.target;
