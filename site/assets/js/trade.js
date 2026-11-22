@@ -2020,23 +2020,9 @@
     var menu = $('ctxMenu');
     if (!menu) return;
     menu.innerHTML = '';
-    if (hit) {
-      ctxItem(menu, '删除 ' + maLabel(hit.p), function () { removeMa(hit.p); }, 'is-danger', false);
-      ctxSep(menu);
-    }
-    ctxLabel(menu, '添加均线');
-    var full = Ind.ma.length >= MA_MAX;
-    MA_PRESETS.forEach(function (p) {
-      if (maByPeriod(p)) return;
-      ctxItem(menu, maLabel(p), function () { addMa(p); }, '', full);
-    });
-    if (full) ctxLabel(menu, '最多同时显示 ' + MA_MAX + ' 条');
-    ctxSep(menu);
     ctxLabel(menu, '副图');
     ctxItem(menu, (Ind.vol ? '隐藏' : '显示') + '成交量', function () { setVolVisible(!Ind.vol); }, '', false);
     ctxItem(menu, (Ind.macd ? '隐藏' : '显示') + ' MACD', function () { setMacdVisible(!Ind.macd); }, '', false);
-    ctxSep(menu);
-    ctxItem(menu, '恢复默认均线', resetMa, '', false);
     menu.hidden = false;
     placeCtx(menu, x, y);
   }
@@ -2047,9 +2033,9 @@
     // 右键在直线上：直线菜单（删除 / 锁定 / 颜色）；否则是均线菜单
     var ln = lineAtPoint(e.clientX, e.clientY);
     if (DRAW_DEV === 'm') {
-      // 手机长按只留十字线：不再弹「添加均线」菜单（双击屏幕才是入口），
-      // 但长按在直线上还是给直线菜单，否则手机上删不了单条直线。
+      // 手机长按：直线上仍给直线菜单；空白处弹出副图指标
       if (ln && !Draw.active) openLineCtx(e.clientX, e.clientY, ln);
+      else openCtx(e.clientX, e.clientY, null);
       return;
     }
     if (ln) { openLineCtx(e.clientX, e.clientY, ln); return; }
@@ -4252,8 +4238,7 @@
     if (macdBox) {
       macdBox.addEventListener('contextmenu', function (e) {
         e.preventDefault();
-        // 手机上长按只留十字线，不弹「添加均线」菜单（双击屏幕才是入口）
-        if (DRAW_DEV === 'm') return;
+        // 手机上长按也只弹副图指标
         openCtx(e.clientX, e.clientY, null);
       });
     }
@@ -4325,6 +4310,7 @@
       setDrawActive(!(Draw.active && Draw.tool === 'measure'), 'measure');
     });
     bindLineDlg();
+    // 手机双击不再作为添加均线入口
     var eraseBtn = $('btnErase');
     if (eraseBtn) eraseBtn.addEventListener('click', eraseDrawings);
   }
@@ -4551,7 +4537,6 @@
   }
 
   function bindChartGestures() {
-    bindDoubleTapAddMa();
     bindScaleStrip();
     bindFullscreen();
     // 缩放时保持右边那点留白的像素宽度

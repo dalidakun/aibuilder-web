@@ -36,7 +36,7 @@
 - **点一条均线读数**：弹出编辑小页，可改周期、选颜色（12 色 + 自定义）、隐藏 / 显示、删除。
 - **＋ 添加均线**：图例右侧的按钮，点开选 5/10/20/30/60/120 或自定义 2-250；
   被占用的周期置灰，最多 6 条。
-- **删除**：编辑页「删除这条均线」，或右键 K 线上的均线（7px 内）直接删。
+- **删除**：编辑页「删除这条均线」。
 - 隐藏、颜色、周期都写进 `localStorage`。
 - **手机上**图例只留 `币种 + 均线读数 + 涨跌`，成交量数值（量）不占地方（`.mob .lg-vol` 隐藏）。
 
@@ -166,7 +166,7 @@
 | 交易统计 | `roundTrips` / `tradeStats` / `unrealized` | 配对、胜率、10 倍盈亏 |
 | 账户 | `resetFunds` / `localClose` / `closePos` | 重置、部分平仓 |
 | 时间轴 | `applyChartTimeFormat` / `applyTimeAxis` | 周/月刻度 |
-| 手机手势 | `bindChartGestures` / `bindDoubleTapAddMa` / `bindScaleStrip` / `syncRightPad` | 双击加均线、右边缘压扁、右侧留白 |
+| 手机手势 | `bindChartGestures` / `bindScaleStrip` / `syncRightPad` | 右边缘压扁、右侧留白 |
 | 全屏 | `toggleChartFullscreen` / `fsSync` | 真全屏 + 锁横屏，iOS 用固定层兜底 |
 
 ## 十一、验证
@@ -193,7 +193,7 @@ node tools/trade_page_test.js
 6. 成交记录默认 8 条，点「查看更多」继续加载；点某条记录图上黑点闪烁；
 7. 时钟图标显示全部开平仓黑点；铅笔自由画，Shift 拖直线；橡皮 / Ctrl+Z；
 8. 头像菜单「重置资金」→ 现金 10 万、持仓清空、历史与胜率保留、盈亏归零；
-9. 手机：长按只出十字线，双击出「添加均线」，右下角全屏，右边缘长按后上下压扁，右侧留白约 22px。
+9. 手机：长按只弹副图指标菜单，右下角全屏，右边缘长按后上下压扁，右侧留白约 22px。
 
 ## 十二、改参数
 
@@ -233,9 +233,7 @@ tcb fn code update api -e randeng-d8gs968w22a3d98e8
 - **右侧留白**：手机上去掉那条 78px 的透明价格轴（`rightPriceScale.visible = false`），
   K 线一直画到屏幕右边；右边仍留约 22px 空位，按 `barSpacing` 换算成根数写进
   `rightOffset`（`syncRightPad`），放大缩小后留白像素不变。
-- **长按**：只保留十字线，不再弹「添加均线」右键菜单（MACD 副图、图例上的长按同理）；
-  长按在直线上仍出直线菜单，这样手机上还能删单条直线。
-- **双击**：双击走势图弹出「添加均线」页（`bindDoubleTapAddMa`：340ms 内两下、位移 40px 内）。
+- **长按**：只弹副图指标菜单（成交量 / MACD 显示、隐藏）；长按在直线上仍出直线菜单。
 - **手机输入**：键盘弹出会触发 scroll / resize，均线浮层不会因此被关掉；自定义周期输入框移动端
   16px / 36px，避免 iOS 自动放大页面，`enterkeyhint=done` 可直接回车应用。
 - **压扁 / 拉伸**：右边缘一条 44px 透明手势带（`#scaleStrip`，中间一条细握把）。
